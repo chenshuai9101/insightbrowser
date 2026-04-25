@@ -1,178 +1,72 @@
-# 🔍 InsightBrowser Registry
+# 🌐 InsightBrowser — Agent Internet Registry & Hosting
 
-**Agent原生互联网注册中心 · AHP协议目录服务平台**
-
-> 人类互联网：HTTP + HTML + Google + 阿里云
-> **Agent 互联网：AHP协议 + agent.json + Registry（目录） + Hosting（托管）**
-
-InsightBrowser Registry 是 Agent 互联网的核心基础设施——相当于人类互联网的 Google + 黄页。
+> **🏢 InsightLabs — Agent 原生互联网基础设施**  
+> MIT · 免费 · 开源  
+> 📦 [InsightBrowser](https://github.com/chenshuai9101/insightbrowser) · [InsightLens](https://github.com/chenshuai9101/insightlens) · [InsightSee](https://github.com/chenshuai9101/insightsee) · [InsightHub](https://github.com/chenshuai9101/insighthub)  
+> ☕ 如果对你有帮助，欢迎捐赠 → assets/ 目录有收款码
 
 ---
 
-## 🚀 快速开始
+Not a human browser. An Agent-native internet platform.
+
+Your agent discovers, publishes, and calls other agents. Like the human web, but built for agents.
+
+## Components
+
+### Registry (7000)
+Agent directory service. Agents register their capabilities (agent.json), other agents search and discover.
+
+### Hosting (7001)
+Agent hosting platform. Companies submit capability descriptions, we generate and run their AHP-compliant agent site. Monthly subscription.
+
+## Quick Start
 
 ```bash
-# 1. 安装依赖
+# Registry
+cd /path/to/insightbrowser
 pip install -r requirements.txt
-
-# 2. 启动服务
 python3 main.py
+# → http://localhost:7000
 
-# 3. 打开浏览器访问
-#    http://localhost:7000
+# Hosting (separate terminal)
+cd /path/to/insightbrowser-hosting
+pip install -r requirements.txt  
+python3 main.py
+# → http://localhost:7001
 ```
 
-或使用启动脚本：
+## API
 
-```bash
-bash scripts/start.sh
-```
+### Registry API
+- `POST /api/register` — Register a new agent site with agent.json
+- `GET /api/search?q=xxx` — Search registered sites
+- `GET /api/site/{id}` — Get site details
+- `GET /api/sites` — List all sites (paginated)
+- `GET /api/stats` — Platform statistics
 
-## 🌱 种子数据（示范站）
+### Hosting API
+- `POST /api/sites` — Create a hosted agent site
+- `GET /api/sites` — List hosted sites
+- `GET /api/site/{id}/agent.json` — Generated AHP agent.json
+- `PUT /api/site/{id}` — Edit hosted site
+- `DELETE /api/site/{id}` — Remove hosted site
 
-服务启动后，运行以下命令注册示范站点：
+## Protocol: AHP v0.1
 
-```bash
-bash scripts/seed.sh
-```
+Agent Hosting Protocol — the HTTP for agents.
 
-这将会注册两个示范站：
-
-| 站点 | 类型 | 能力 |
-|------|------|------|
-| **用户需求洞察** | analysis_engine | 分析用户反馈、搜索历史洞察 |
-| **网页内容提取** | web_extractor | 提取网页内容、监控网页变更 |
-
-## 📡 API 端点
-
-### Agent API（JSON 格式）
-
-| 方法 | 路径 | 描述 |
-|------|------|------|
-| `POST` | `/api/register` | 注册新站点（提交 agent.json） |
-| `GET` | `/api/search?q=xxx&type=xxx&capability=xxx` | 搜索注册站 |
-| `GET` | `/api/site/{site_id}` | 查看站点详情 |
-| `GET` | `/api/sites?page=1&page_size=20` | 列出所有注册站（分页） |
-| `GET` | `/api/stats` | 平台统计信息 |
-
-### 示例：注册一个 Agent 站点
-
-```bash
-curl -X POST http://localhost:7000/api/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "我的Agent站",
-    "type": "general",
-    "description": "这是我的第一个Agent站点",
-    "owner": "agent://myname/myagent",
-    "endpoint": "http://localhost:8080",
-    "capabilities": [
-      {
-        "id": "cap_hello",
-        "name": "打招呼",
-        "description": "向用户打招呼",
-        "params": {"name": {"type": "string", "required": true}},
-        "returns": {"type": "string", "description": "问候语"}
-      }
-    ]
-  }'
-```
-
-### 示例：搜索 Agent 站点
-
-```bash
-# 按关键词搜索
-curl "http://localhost:7000/api/search?q=洞察"
-
-# 按类型筛选
-curl "http://localhost:7000/api/search?type=analysis_engine"
-
-# 按能力筛选
-curl "http://localhost:7000/api/search?capability=提取"
-```
-
-## 🌐 人类页面
-
-| 路径 | 说明 |
-|------|------|
-| `/` | 首页（平台总览 + 最新站点） |
-| `/sites` | 浏览所有注册站 |
-| `/site/{site_id}` | 查看站点详情 |
-| `/register` | 手动注册页 |
-| `/pricing` | 定价页（含收款码） |
-
-## 🏗️ 项目结构
-
-```
-insightbrowser/
-├── README.md              # 平台说明
-├── requirements.txt       # Python 依赖
-├── main.py                # FastAPI 应用入口
-├── config.py              # 配置文件
-├── models.py              # 数据模型（SQLite ORM）
-├── routes/
-│   ├── api.py             # Agent API 端点
-│   └── pages.py           # 人类页面路由
-├── services/
-│   └── registry.py        # 注册中心核心逻辑
-├── templates/             # Jinja2 模板
-│   ├── base.html          # 基础模板
-│   ├── index.html         # 首页
-│   ├── sites.html         # 站点列表
-│   ├── site_detail.html   # 站点详情
-│   ├── register.html      # 注册页
-│   └── pricing.html       # 定价页
-├── static/
-│   └── style.css          # 样式
-├── assets/                # 收款码图片
-├── seeds/                 # 示范站数据
-├── scripts/
-│   ├── start.sh           # 启动脚本
-│   └── seed.sh            # 种子数据脚本
-└── data/                  # SQLite 数据库
-```
-
-## 💰 支持我们
-
-InsightBrowser Registry 是开源的 Agent 目录服务。您的支持帮助平台持续发展。
-
-| 微信支付 | 支付宝 |
-|---------|--------|
-| ![微信支付](assets/wechat_pay.jpg) | ![支付宝](assets/alipay.jpg) |
-
-## 📄 AHP 协议
-
-一个 AHP 网站 = 一个运行中的 Agent 进程 + `agent.json`
+Each AHP site is a running agent process with an `agent.json` manifest:
 
 ```json
 {
   "protocol": "ahp/0.1",
-  "site_id": "自动生成的唯一ID",
-  "name": "网站名称",
-  "type": "网站类型",
-  "description": "一句话描述",
-  "owner": "建站Agent标识",
-  "endpoint": "访问地址",
-  "capabilities": [...],
-  "trust_level": "unverified/verified",
-  "rating": 0.0,
-  "usage_count": 0,
-  "created_at": "ISO时间",
-  "updated_at": "ISO时间"
+  "name": "Your Agent Site",
+  "type": "analysis_engine",
+  "description": "What this agent site does",
+  "capabilities": [...]
 }
 ```
 
-## 🧩 技术栈
+## License
 
-- **Web 框架**: FastAPI
-- **模板**: Jinja2
-- **存储**: SQLite
-- **前端**: 纯 CSS（深色主题）
-
-## 📝 开源协议
-
-MIT License
-
----
-
-*Built by InsightLabs. For the Agent Internet.*
+MIT — do whatever you want.
