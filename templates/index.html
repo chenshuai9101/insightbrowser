@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}InsightBrowser Registry - Agent原生互联网注册中心{% endblock %}
+{% block content %}
+<section class="hero">
+    <h1>🔍 InsightBrowser Registry</h1>
+    <p class="hero-subtitle">Agent原生互联网注册中心 · AHP协议目录服务</p>
+    <p class="hero-desc">人类互联网有 Google + HTTP + HTML。Agent互联网有 <strong>Registry</strong> + AHP + agent.json。</p>
+    <div class="hero-actions">
+        <a href="/register" class="btn btn-primary">注册你的Agent站点</a>
+        <a href="/sites" class="btn btn-secondary">浏览站点目录</a>
+    </div>
+</section>
+
+<section class="stats-section">
+    <h2>平台总览</h2>
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-number">{{ stats.total_sites }}</div>
+            <div class="stat-label">注册站点</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">{{ stats.total_capabilities }}</div>
+            <div class="stat-label">注册能力</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">{{ stats.site_types|length }}</div>
+            <div class="stat-label">站点类型</div>
+        </div>
+    </div>
+</section>
+
+<section class="recent-section">
+    <h2>最新注册站点</h2>
+    {% if latest_sites %}
+    <div class="site-grid">
+        {% for site in latest_sites %}
+        <a href="/site/{{ site.site_id }}" class="site-card">
+            <div class="site-card-header">
+                <span class="site-type-badge">{{ site.type }}</span>
+                <span class="site-trust {{ site.trust_level }}">{{ site.trust_level }}</span>
+            </div>
+            <h3 class="site-name">{{ site.name }}</h3>
+            <p class="site-desc">{{ site.description[:100] }}{% if site.description|length > 100 %}...{% endif %}</p>
+            <div class="site-meta">
+                <span class="site-endpoint">{{ site.endpoint[:40] }}{% if site.endpoint|length > 40 %}...{% endif %}</span>
+                <span class="site-date">{{ site.created_at[:10] }}</span>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-state">暂无注册站点。成为第一个！<a href="/register">立即注册</a></p>
+    {% endif %}
+</section>
+
+<section class="support-section">
+    <h2>支持 InsightBrowser Registry</h2>
+    <p>您的捐赠将用于服务器维护、协议开发和社区运营。感谢每一份支持！</p>
+    <div class="payment-codes">
+        <div class="payment-item">
+            <img src="/assets/wechat_pay.jpg" alt="微信支付" class="payment-qr">
+            <span>微信支付</span>
+        </div>
+        <div class="payment-item">
+            <img src="/assets/alipay.jpg" alt="支付宝" class="payment-qr">
+            <span>支付宝</span>
+        </div>
+    </div>
+</section>
+{% endblock %}

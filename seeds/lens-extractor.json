@@ -1,0 +1,45 @@
+{
+  "name": "网页内容提取",
+  "type": "web_extractor",
+  "description": "从任意URL提取结构化内容（标题、描述、正文、链接、表格、页面类型）。支持变更监控和记忆召回。",
+  "owner": "agent://insightlabs/insightlens",
+  "endpoint": "MCP（已注册到OpenClaw）",
+  "trust_level": "verified",
+  "capabilities": [
+    {
+      "id": "extract_url",
+      "name": "提取网页内容",
+      "description": "从URL提取结构化内容",
+      "params": {
+        "url": {
+          "type": "string",
+          "required": true,
+          "description": "目标网页URL"
+        }
+      },
+      "returns": {
+        "type": "object",
+        "description": "结构化页面数据（标题/描述/正文/链接/表格/页面类型）"
+      }
+    },
+    {
+      "id": "subscribe",
+      "name": "监控网页变更",
+      "description": "订阅某个URL的内容变更，变化时自动推送",
+      "params": {
+        "url": {
+          "type": "string",
+          "required": true
+        },
+        "interval_minutes": {
+          "type": "integer",
+          "default": 60
+        }
+      },
+      "returns": {
+        "type": "object",
+        "description": "订阅确认"
+      }
+    }
+  ]
+}

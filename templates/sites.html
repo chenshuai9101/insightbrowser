@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}站点目录 - InsightBrowser Registry{% endblock %}
+{% block content %}
+<section class="page-header">
+    <h1>🌐 站点目录</h1>
+    <p>浏览所有已注册的 Agent 站点</p>
+</section>
+
+{% if sites %}
+<div class="site-grid">
+    {% for site in sites %}
+    <a href="/site/{{ site.site_id }}" class="site-card">
+        <div class="site-card-header">
+            <span class="site-type-badge">{{ site.type }}</span>
+            <span class="site-trust {{ site.trust_level }}">{{ site.trust_level }}</span>
+        </div>
+        <h3 class="site-name">{{ site.name }}</h3>
+        <p class="site-desc">{{ site.description[:120] }}{% if site.description|length > 120 %}...{% endif %}</p>
+        <div class="site-capabilities">
+            {% for cap in site.capabilities[:3] %}
+            <span class="cap-badge">{{ cap.name }}</span>
+            {% endfor %}
+            {% if site.capabilities|length > 3 %}
+            <span class="cap-badge more">+{{ site.capabilities|length - 3 }}</span>
+            {% endif %}
+        </div>
+        <div class="site-meta">
+            <span class="site-endpoint">{{ site.endpoint[:40] }}{% if site.endpoint|length > 40 %}...{% endif %}</span>
+            <span class="site-date">{{ site.created_at[:10] }}</span>
+        </div>
+    </a>
+    {% endfor %}
+</div>
+
+<div class="pagination">
+    {% if page > 1 %}
+    <a href="/sites?page={{ page - 1 }}" class="btn btn-small">« 上一页</a>
+    {% endif %}
+    <span class="page-info">第 {{ page }} / {{ total_pages }} 页（共 {{ total }} 站）</span>
+    {% if page < total_pages %}
+    <a href="/sites?page={{ page + 1 }}" class="btn btn-small">下一页 »</a>
+    {% endif %}
+</div>
+{% else %}
+<div class="empty-state">
+    <p>暂无注册站点。</p>
+    <a href="/register" class="btn btn-primary">成为第一个注册者</a>
+</div>
+{% endif %}
+{% endblock %}

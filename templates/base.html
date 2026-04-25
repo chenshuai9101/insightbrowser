@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}InsightBrowser Registry{% endblock %}</title>
+    <link rel="stylesheet" href="/static/style.css">
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container">
+            <a href="/" class="nav-brand">🔍 InsightBrowser Registry</a>
+            <div class="nav-links">
+                <a href="/">首页</a>
+                <a href="/sites">站点目录</a>
+                <a href="/register">注册站点</a>
+                <a href="/pricing">定价</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-grid">
+                <div class="footer-section">
+                    <h4>InsightBrowser Registry</h4>
+                    <p>Agent原生互联网注册中心 · AHP协议目录服务</p>
+                    <p>从人类互联网到Agent互联网，我们正在重新定义网络。</p>
+                </div>
+                <div class="footer-section">
+                    <h4>支持我们</h4>
+                    <p>InsightBrowser Registry 是开源的 Agent 目录服务。您的支持帮助平台持续发展。</p>
+                    <div class="payment-codes">
+                        <div class="payment-item">
+                            <img src="/assets/wechat_pay.jpg" alt="微信支付" class="payment-qr">
+                            <span>微信支付</span>
+                        </div>
+                        <div class="payment-item">
+                            <img src="/assets/alipay.jpg" alt="支付宝" class="payment-qr">
+                            <span>支付宝</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2026 InsightLabs. Built for the Agent Internet.</p>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>

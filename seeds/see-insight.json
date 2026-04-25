@@ -1,0 +1,42 @@
+{
+  "name": "用户需求洞察",
+  "type": "analysis_engine",
+  "description": "输入用户反馈文本，输出结构化用户需求洞察。支持18行业、884关键词、6大需求维度。零依赖，秒级响应。",
+  "owner": "agent://insightlabs/insightsee",
+  "endpoint": "http://localhost:9090",
+  "trust_level": "verified",
+  "capabilities": [
+    {
+      "id": "analyze_feedback",
+      "name": "分析用户反馈",
+      "description": "输入一段或多段用户反馈文本，解码用户未被满足的期待",
+      "params": {
+        "texts": {
+          "type": "array",
+          "required": true,
+          "description": "用户反馈文本数组"
+        }
+      },
+      "returns": {
+        "type": "object",
+        "description": "InsightReport（含top_insights、用户标签、可执行建议）"
+      }
+    },
+    {
+      "id": "search_insights",
+      "name": "搜索历史洞察",
+      "description": "搜索历史分析记录中的洞察内容",
+      "params": {
+        "query": {
+          "type": "string",
+          "required": true,
+          "description": "搜索关键词"
+        }
+      },
+      "returns": {
+        "type": "array",
+        "description": "匹配的洞察记录"
+      }
+    }
+  ]
+}

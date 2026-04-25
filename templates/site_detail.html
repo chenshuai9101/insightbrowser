@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}{% if site %}{{ site.name }} - InsightBrowser Registry{% else %}站点未找到{% endif %}{% endblock %}
+{% block content %}
+{% if site %}
+<section class="page-header">
+    <a href="/sites" class="back-link">← 返回目录</a>
+    <div class="site-detail-header">
+        <h1>{{ site.name }}</h1>
+        <div class="site-header-meta">
+            <span class="site-type-badge">{{ site.type }}</span>
+            <span class="site-trust {{ site.trust_level }}">{{ site.trust_level }}</span>
+            <span class="site-rating">⭐ {{ site.rating }}</span>
+            <span class="site-usage">📊 使用 {{ site.usage_count }} 次</span>
+        </div>
+    </div>
+</section>
+
+<section class="site-detail-section">
+    <h2>基本信息</h2>
+    <table class="info-table">
+        <tr>
+            <td class="info-label">站点ID</td>
+            <td class="info-value"><code>{{ site.site_id }}</code></td>
+        </tr>
+        <tr>
+            <td class="info-label">协议</td>
+            <td class="info-value"><code>{{ site.protocol }}</code></td>
+        </tr>
+        <tr>
+            <td class="info-label">描述</td>
+            <td class="info-value">{{ site.description }}</td>
+        </tr>
+        <tr>
+            <td class="info-label">所有者</td>
+            <td class="info-value"><code>{{ site.owner }}</code></td>
+        </tr>
+        <tr>
+            <td class="info-label">端点</td>
+            <td class="info-value"><code>{{ site.endpoint }}</code></td>
+        </tr>
+        <tr>
+            <td class="info-label">创建时间</td>
+            <td class="info-value">{{ site.created_at }}</td>
+        </tr>
+        <tr>
+            <td class="info-label">更新时间</td>
+            <td class="info-value">{{ site.updated_at }}</td>
+        </tr>
+    </table>
+</section>
+
+<section class="site-detail-section">
+    <h2>注册能力（{{ site.capabilities|length }}）</h2>
+    {% if site.capabilities %}
+    {% for cap in site.capabilities %}
+    <div class="capability-card">
+        <div class="cap-header">
+            <span class="cap-id-badge">{{ cap.id }}</span>
+            <h3>{{ cap.name }}</h3>
+        </div>
+        <p class="cap-desc">{{ cap.description }}</p>
+        <div class="cap-details">
+            <div class="cap-params">
+                <h4>参数</h4>
+                <pre><code>{{ cap.params | tojson(indent=2) }}</code></pre>
+            </div>
+            <div class="cap-returns">
+                <h4>返回</h4>
+                <pre><code>{{ cap.returns | tojson(indent=2) }}</code></pre>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <p class="empty-state">该站点未注册任何能力。</p>
+    {% endif %}
+</section>
+
+<section class="site-detail-section">
+    <h2>完整 agent.json</h2>
+    <pre class="json-block"><code>{
+  "protocol": "{{ site.protocol }}",
+  "site_id": "{{ site.site_id }}",
+  "name": "{{ site.name }}",
+  "type": "{{ site.type }}",
+  "description": "{{ site.description }}",
+  "owner": "{{ site.owner }}",
+  "endpoint": "{{ site.endpoint }}",
+  "capabilities": {{ site.capabilities | tojson(indent=2) }},
+  "trust_level": "{{ site.trust_level }}",
+  "rating": {{ site.rating }},
+  "usage_count": {{ site.usage_count }},
+  "created_at": "{{ site.created_at }}",
+  "updated_at": "{{ site.updated_at }}"
+}</code></pre>
+</section>
+{% else %}
+<section class="error-section">
+    <h1>😕 站点未找到</h1>
+    <p>{{ error }}</p>
+    <a href="/sites" class="btn btn-primary">浏览所有站点</a>
+</section>
+{% endif %}
+{% endblock %}

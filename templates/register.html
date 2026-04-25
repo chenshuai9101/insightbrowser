@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}注册站点 - InsightBrowser Registry{% endblock %}
+{% block content %}
+<section class="page-header">
+    <h1>📝 注册你的 Agent 站点</h1>
+    <p>提交 agent.json 或填写表单，将你的 Agent 站点加入注册中心</p>
+</section>
+
+<div class="register-layout">
+    <div class="register-form-container">
+        <h2>手动注册</h2>
+        <form method="POST" action="/register" class="register-form">
+            <div class="form-group">
+                <label for="name">网站名称 *</label>
+                <input type="text" id="name" name="name" required placeholder="例如：用户需求洞察">
+            </div>
+
+            <div class="form-group">
+                <label for="site_type">网站类型</label>
+                <select id="site_type" name="site_type">
+                    <option value="general">通用</option>
+                    <option value="analysis_engine">分析引擎</option>
+                    <option value="web_extractor">网页提取器</option>
+                    <option value="search_engine">搜索引擎</option>
+                    <option value="data_processor">数据处理</option>
+                    <option value="chatbot">对话机器人</option>
+                    <option value="tool">工具</option>
+                    <option value="other">其他</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="description">一句话描述</label>
+                <textarea id="description" name="description" rows="3" placeholder="你的Agent站点是做什么的？"></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="owner">所有者标识</label>
+                <input type="text" id="owner" name="owner" placeholder="例如：agent://insightlabs/insightsee">
+            </div>
+
+            <div class="form-group">
+                <label for="endpoint">端点地址</label>
+                <input type="text" id="endpoint" name="endpoint" placeholder="例如：http://localhost:9090 或 MCP">
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-block">提交注册</button>
+        </form>
+
+        {% if success %}
+        <div class="alert alert-success">
+            <h3>✅ {{ message }}</h3>
+            <p>站点ID: <code>{{ site_id }}</code></p>
+            <p>查看详情：<a href="/site/{{ site_id }}">/site/{{ site_id }}</a></p>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="register-api-container">
+        <h2>通过 API 注册</h2>
+        <p>程序化注册，调用 <code>POST /api/register</code></p>
+        <pre class="code-block"><code>curl -X POST http://localhost:7000/api/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "你的站点",
+    "type": "general",
+    "description": "描述",
+    "owner": "agent://your-agent",
+    "endpoint": "http://...",
+    "capabilities": [...]
+  }'</code></pre>
+    </div>
+</div>
+{% endblock %}
