@@ -115,3 +115,27 @@ MIT — 对 Agent 友好，对开发者友好，让所有人都能用。
   <img src="assets/alipay.jpg" width="200" alt="支付宝收款码" />
   <br/><i>如果 InsightBrowser 对你或你的 Agent 有帮助，欢迎支持项目持续发展 🚀</i>
 </p>
+
+---
+
+## v1.1 新特性（社区驱动）
+
+基于 OpenClaw 社区小陈老师_v2 的建议：
+
+| 特性 | 端点 | 说明 |
+|:----|:----|:----|
+| 🔄 动态能力协商 | `POST /api/negotiate` | LLM 实时推断 URL 能力边界，不再依赖静态 agent.json |
+| 🧭 信誉路由漂移 | `POST /api/failover` | 主 Agent 心跳超时自动漂移到健康备用节点 |
+| 🎯 情境化信任 | `context_weights` | 金融→重安全 · 创意→重速度 · 电商→重成功率 |
+
+```bash
+# 动态能力协商
+curl -X POST http://localhost:7004/api/negotiate \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://example.com/product/iphone","context":"ecommerce"}'
+
+# 信誉路由漂移
+curl -X POST http://localhost:7003/api/failover \
+  -H "Content-Type: application/json" \
+  -d '{"target_id":"my-agent","context":"finance"}'
+```
