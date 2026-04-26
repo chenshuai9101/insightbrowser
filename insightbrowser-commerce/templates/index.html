@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InsightBrowser 商家入驻 - 让 Agent 发现你的店铺</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #4F46E5;
+            --primary-light: #6366F1;
+            --primary-dark: #3730A3;
+            --bg: #F8FAFC;
+            --card-bg: #FFFFFF;
+        }
+        body {
+            background: var(--bg);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+        .hero {
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            color: white;
+            padding: 60px 0 50px;
+            text-align: center;
+        }
+        .hero h1 { font-size: 2.5rem; font-weight: 800; margin-bottom: 12px; }
+        .hero p { font-size: 1.1rem; opacity: 0.9; max-width: 600px; margin: 0 auto; }
+        .hero .subtitle { margin-top: 8px; font-size: 0.95rem; opacity: 0.75; }
+
+        .form-card {
+            background: var(--card-bg);
+            border-radius: 16px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+            padding: 40px;
+            max-width: 680px;
+            margin: -30px auto 40px;
+            position: relative;
+        }
+        .form-card h2 { font-size: 1.3rem; font-weight: 700; margin-bottom: 24px; }
+
+        .step-indicator {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 30px;
+        }
+        .step-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #E2E8F0;
+        }
+        .step-dot.active { background: var(--primary); }
+        .step-dot.completed { background: #10B981; }
+
+        .form-label { font-weight: 600; color: #374151; margin-bottom: 6px; }
+        .form-control, .form-select {
+            border-radius: 10px;
+            border: 2px solid #E2E8F0;
+            padding: 12px 16px;
+            font-size: 0.95rem;
+            transition: border-color 0.2s;
+        }
+        .form-control:focus, .form-select:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(79,70,229,0.1);
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            border: none;
+            border-radius: 10px;
+            padding: 14px 32px;
+            font-weight: 600;
+            font-size: 1.05rem;
+            transition: background 0.2s, transform 0.1s;
+        }
+        .btn-primary:hover { background: var(--primary-dark); }
+        .btn-primary:active { transform: scale(0.98); }
+        .btn-primary:disabled { background: #94A3B8; cursor: not-allowed; }
+
+        .result-card {
+            display: none;
+            background: #ECFDF5;
+            border: 2px solid #A7F3D0;
+            border-radius: 12px;
+            padding: 24px;
+            margin-top: 20px;
+        }
+        .result-card.show { display: block; }
+
+        .result-icon { font-size: 3rem; text-align: center; margin-bottom: 12px; }
+        .result-title { font-size: 1.2rem; font-weight: 700; text-align: center; color: #065F46; }
+        .result-details { margin-top: 16px; }
+        .result-details dt { font-weight: 600; color: #374151; margin-top: 12px; }
+        .result-details dd { color: #6B7280; word-break: break-all; }
+        .result-details .url-link { color: var(--primary); font-weight: 500; }
+
+        .agent-json-preview {
+            background: #1E293B;
+            color: #E2E8F0;
+            border-radius: 8px;
+            padding: 16px;
+            font-size: 0.8rem;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 12px;
+        }
+
+        .features-section {
+            max-width: 900px;
+            margin: 0 auto 60px;
+        }
+        .feature-card {
+            text-align: center;
+            padding: 24px;
+            border-radius: 12px;
+            border: 1px solid #E2E8F0;
+            background: white;
+            height: 100%;
+            transition: box-shadow 0.2s, transform 0.2s;
+        }
+        .feature-card:hover {
+            box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+        }
+        .feature-icon { font-size: 2.5rem; margin-bottom: 12px; }
+        .feature-card h5 { font-weight: 700; margin-bottom: 8px; }
+        .feature-card p { font-size: 0.9rem; color: #6B7280; }
+
+        .spinner-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(255,255,255,0.8);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+        }
+        .spinner-overlay.show { display: flex; }
+        .spinner-content { text-align: center; }
+        .spinner-content .spinner-text { margin-top: 16px; color: #6B7280; font-size: 1rem; }
+
+        .error-card {
+            background: #FEF2F2;
+            border: 2px solid #FECACA;
+            border-radius: 12px;
+            padding: 24px;
+            margin-top: 20px;
+            color: #991B1B;
+        }
+
+        .footer-section {
+            text-align: center;
+            padding: 24px;
+            color: #94A3B8;
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+
+<!-- Loading Spinner -->
+<div class="spinner-overlay" id="loadingOverlay">
+    <div class="spinner-content">
+        <div class="spinner-border" style="width: 3rem; height: 3rem; color: var(--primary);" role="status">
+            <span class="visually-hidden">加载中...</span>
+        </div>
+        <p class="spinner-text">🔍 正在分析你的店铺...</p>
+        <p class="spinner-text" style="font-size: 0.85rem;">爬取网页 → 分析内容 → 生成 Agent 配置 → 注册系统</p>
+    </div>
+</div>
+
+<!-- Hero -->
+<section class="hero">
+    <div class="container">
+        <h1>🚀 让 Agent 发现你的店铺</h1>
+        <p>粘贴官网链接，一键入驻 InsightBrowser — Agent 原生互联网</p>
+        <p class="subtitle">AI 自动爬取分析你的商品和服务，生成 Agent 配置文件，即刻被千万 Agent 发现</p>
+    </div>
+</section>
+
+<!-- Form Card -->
+<div class="container">
+    <div class="form-card">
+        <h2>📋 商家入驻信息</h2>
+
+        <div class="step-indicator">
+            <div class="step-dot active" id="step1"></div>
+            <div class="step-dot" id="step2"></div>
+            <div class="step-dot" id="step3"></div>
+        </div>
+
+        <form id="onboardingForm">
+            <div class="row mb-3">
+                <div class="col-md-6 mb-3 mb-md-0">
+                    <label for="name" class="form-label">店铺名称</label>
+                    <input type="text" class="form-control" id="name" name="name"
+                           placeholder="例：小明手机店" required>
+                </div>
+                <div class="col-md-6">
+                    <label for="category" class="form-label">商品类别</label>
+                    <select class="form-select" id="category" name="category" required>
+                        <option value="">选择类别...</option>
+                        {% for cat in categories %}
+                        <option value="{{ cat.id }}">{{ cat.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="mb-3">
+                <label for="url" class="form-label">店铺官网 URL</label>
+                <input type="url" class="form-control" id="url" name="url"
+                       placeholder="https://example.com" required>
+                <div class="form-text">我们会自动爬取分析你的网站内容</div>
+            </div>
+            <div class="mb-4">
+                <label for="description" class="form-label">简短描述</label>
+                <textarea class="form-control" id="description" name="description"
+                          rows="2" placeholder="介绍一下你的店铺卖什么、服务什么用户..."
+                          required></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary btn-lg w-100" id="submitBtn">
+                ⚡ 一键入驻 InsightBrowser
+            </button>
+        </form>
+
+        <!-- Success Result -->
+        <div class="result-card" id="resultCard">
+            <div class="result-icon">🎉</div>
+            <div class="result-title">入驻成功！Agent 已发现你的店铺</div>
+            <div class="result-details">
+                <dl>
+                    <dt>🔗 Agent 发现链接</dt>
+                    <dd><a href="#" id="discoverUrl" class="url-link" target="_blank"></a></dd>
+                    <dt>🏷️ Registry ID</dt>
+                    <dd><code id="registryId"></code></dd>
+                    <dt>🏠 Hosting ID</dt>
+                    <dd><code id="hostingId"></code></dd>
+                    <dt>🤖 agent.json 预览</dt>
+                    <dd>
+                        <div class="agent-json-preview" id="agentJsonPreview"></div>
+                    </dd>
+                </dl>
+            </div>
+            <div class="text-center mt-3">
+                <a href="/" class="btn btn-outline-secondary btn-sm">入驻另一个店铺</a>
+            </div>
+        </div>
+
+        <!-- Error Result -->
+        <div class="error-card" id="errorCard" style="display:none;">
+            <p id="errorMessage"></p>
+            <button class="btn btn-outline-danger btn-sm mt-2" onclick="document.getElementById('errorCard').style.display='none'">关闭</button>
+        </div>
+
+        <div class="text-center mt-3">
+            <small class="text-muted">
+                🔒 你的信息仅用于 Agent 配置生成，不会对外公开
+            </small>
+        </div>
+    </div>
+
+    <!-- Features -->
+    <div class="features-section">
+        <h3 class="text-center mb-4" style="font-weight: 700;">入驻后会发生什么？</h3>
+        <div class="row g-4">
+            <div class="col-md-4">
+                <div class="feature-card">
+                    <div class="feature-icon">🔍</div>
+                    <h5>Agent 自动发现</h5>
+                    <p>你的店铺信息被注册到 Agent 发现网络，任何 Agent 都能搜索到你的商品和服务</p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="feature-card">
+                    <div class="feature-icon">🤖</div>
+                    <h5>自动生成 Agent 配置</h5>
+                    <p>系统自动分析你的官网，提取商品信息，生成完整的 agent.json 配置文件</p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="feature-card">
+                    <div class="feature-icon">📊</div>
+                    <h5>信任评级体系</h5>
+                    <p>店铺会获得信任评级（S/A/B），信誉越高的店铺越容易被 Agent 推荐</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<footer class="footer-section">
+    <p>InsightBrowser Commerce Bridge &copy; 2026 — Powered by InsightLabs</p>
+</footer>
+
+<script>
+document.getElementById('onboardingForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const name = document.getElementById('name').value.trim();
+    const url = document.getElementById('url').value.trim();
+    const category = document.getElementById('category').value;
+    const description = document.getElementById('description').value.trim();
+
+    if (!name || !url || !category || !description) {
+        alert('请填写所有必填字段');
+        return;
+    }
+
+    // Show loading
+    document.getElementById('loadingOverlay').classList.add('show');
+    document.getElementById('resultCard').classList.remove('show');
+    document.getElementById('errorCard').style.display = 'none';
+    document.getElementById('submitBtn').disabled = true;
+
+    try {
+        const response = await fetch('/convert', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, url, category, description }),
+        });
+
+        const data = await response.json();
+
+        document.getElementById('loadingOverlay').classList.remove('show');
+        document.getElementById('submitBtn').disabled = false;
+
+        if (data.success) {
+            // Show success
+            document.getElementById('discoverUrl').textContent = data.discover_url;
+            document.getElementById('discoverUrl').href = data.discover_url;
+            document.getElementById('registryId').textContent = data.registry_id || 'N/A';
+            document.getElementById('hostingId').textContent = data.hosting_id || 'N/A';
+            document.getElementById('agentJsonPreview').textContent =
+                JSON.stringify(data.agent_json, null, 2);
+            document.getElementById('resultCard').classList.add('show');
+            window.scrollTo({ top: document.getElementById('resultCard').offsetTop - 100, behavior: 'smooth' });
+        } else {
+            // Show error
+            document.getElementById('errorMessage').textContent =
+                '入驻失败: ' + (data.message || '未知错误，请重试');
+            document.getElementById('errorCard').style.display = 'block';
+        }
+    } catch (err) {
+        document.getElementById('loadingOverlay').classList.remove('show');
+        document.getElementById('submitBtn').disabled = false;
+        document.getElementById('errorMessage').textContent =
+            '网络错误: ' + err.message + '。请确保 Commerce Bridge 服务正在运行。';
+        document.getElementById('errorCard').style.display = 'block';
+    }
+});
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

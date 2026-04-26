@@ -1,0 +1,2 @@
+# InsightBrowser SDK — zero external dependencies
+# All networking uses Python's built-in urllib
