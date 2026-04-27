@@ -16,7 +16,7 @@ echo "╚═══════════════════════�
 
 # 清理旧进程
 echo "🧹 清理旧进程..."
-for port in 7000 7001 7002 7003 7004 9090 8080; do
+for port in 7000 7001 7002 7003 7004 7005 9090 8080; do
     pid=$(lsof -ti :$port 2>/dev/null) && kill $pid 2>/dev/null && echo "  端口$port 已释放"
 done
 sleep 1
@@ -98,7 +98,7 @@ if lsof -ti :8080 >/dev/null 2>&1; then
     echo "       ✅ InsightHub 运行中"
 
 # 7. Commerce Bridge
-echo "  [7/7] 🏪 Commerce Bridge → :7004"
+echo "  [7/8] 🏪 Commerce Bridge → :7004"
 cd "$ROOT/InsightLabs/insightbrowser-commerce"
 python3 run.py > "$LOGDIR/commerce.log" 2>&1 &
 sleep 2
@@ -115,6 +115,20 @@ else
     exit 1
 fi
 
+# 8. A-Hub Slots
+cd "$ROOT/InsightLabs/insightbrowser-slots"
+pip3 install -q fastapi uvicorn pydantic 2>/dev/null
+echo "  [8/8] 🔲 A-Hub Slots → :7005"
+python3 -c "import uvicorn, main; uvicorn.run(main.app, host='0.0.0.0', port=7005)" > "$LOGDIR/slots.log" 2>&1 &
+sleep 2
+if lsof -ti :7005 >/dev/null 2>&1; then
+    echo "       ✅ Slots 卡槽系统 运行中"
+else
+    echo "       ❌ Slots 启动失败"
+    tail -5 "$LOGDIR/slots.log"
+    exit 1
+fi
+
 echo ""
 echo "╔══════════════════════════════════════════════════════════════╗"
 echo "║  ✅ 所有服务已启动                                        ║"
@@ -125,8 +139,8 @@ echo "║  AHP Proxy    → http://localhost:7002  (Agent 协议)         ║"
 echo "║  Reliability  → http://localhost:7003  (信任+账本)          ║"
 echo "║  InsightSee   → http://localhost:9090  (需求洞察)           ║"
 echo "║  InsightHub   → http://localhost:8080  (企业面板)           ║"
-echo "║                                                              ║"
-echo "║  Commerce     → http://localhost:7004  (商家入驻)            ║
+echo "║  Commerce     → http://localhost:7004  (商家入驻)           ║"
+echo "║  A-Hub Slots  → http://localhost:7005  (卡槽系统)           ║"
 echo "║                                                              ║"
 echo "║  Agent SDK: insightbrowser_sdk/ (零依赖)                    ║"
 echo "║  AHP 协议:  ahp/0.1                                        ║"
@@ -137,7 +151,7 @@ echo "╚═══════════════════════�
 # 快速自检
 echo ""
 echo "🧪 快速自检..."
-for port in 7000 7001 7002 7003 9090 8080; do
+for port in 7000 7001 7002 7003 7005 9090 8080; do
     status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:$port/ 2>/dev/null || echo "ERR")
     case $port in
         7000) name="Registry" ;;
