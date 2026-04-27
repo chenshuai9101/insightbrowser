@@ -100,10 +100,7 @@ if lsof -ti :8080 >/dev/null 2>&1; then
 # 7. Commerce Bridge
 echo "  [7/7] 🏪 Commerce Bridge → :7004"
 cd "$ROOT/InsightLabs/insightbrowser-commerce"
-COMMERCE_BRIDGE_DIR=$(pwd) python3 -c "
-import sys, os; sys.path.insert(0, os.getcwd()); os.environ["COMMERCE_BRIDGE_DIR"] = os.getcwd()
-from main import app; import uvicorn; uvicorn.run(app, host="0.0.0.0", port=7004, log_level="info")
-" > "$LOGDIR/commerce.log" 2>&1 &
+python3 run.py > "$LOGDIR/commerce.log" 2>&1 &
 sleep 2
 if lsof -ti :7004 >/dev/null 2>&1; then
     echo "       ✅ Commerce Bridge 运行中"
