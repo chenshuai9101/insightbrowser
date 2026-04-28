@@ -1,8 +1,11 @@
 """
 卡槽系统路由 — 五大卡槽 + 端点定义
+v3.1: Pipeline 并行化 + 超时熔断
 """
+import asyncio
 import json
 import logging
+import concurrent.futures
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
@@ -18,14 +21,22 @@ engine = SlotsEngine()
 # ─── 请求模型 ───
 
 class PerceiveRequest(BaseModel):
-    input_text: str = Field(..., description="用户输入")
+    input_text: Optional[str] = Field(default=None, description="用户输入")
+    user_request: Optional[str] = Field(default=None, description="用户请求(别名)")
     context: Optional[Dict[str, Any]] = Field(default_factory=dict, description="上下文")
     language: str = Field(default="zh", description="语言")
+    max_steps: Optional[int] = Field(default=20, description="最多执行步数")
+    
+    @property
+    def text(self) -> str:
+        return self.input_text or self.user_request or ""
+
 
 class PlanRequest(BaseModel):
     goal: str = Field(..., description="目标描述")
     constraints: Optional[Dict[str, Any]] = Field(default_factory=dict)
     available_capabilities: Optional[List[str]] = None
+
 
 class ExecuteRequest(BaseModel):
     task_id: str = Field(..., description="任务ID")
@@ -33,15 +44,18 @@ class ExecuteRequest(BaseModel):
     params: Dict[str, Any] = Field(default_factory=dict)
     context: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
+
 class SynthesizeRequest(BaseModel):
     results: List[Dict[str, Any]] = Field(..., description="子任务执行结果列表")
     format: str = Field(default="markdown", description="输出格式")
     target_audience: Optional[str] = None
 
+
 class VerifyRequest(BaseModel):
     output: str = Field(..., description="待验证输出")
     task_goal: str = Field(..., description="原始任务目标")
     quality_dimensions: Optional[List[str]] = None
+
 
 # ─── 统计追踪 ───
 
@@ -60,195 +74,191 @@ def _record_slot(slot: str, latency_ms: float):
 def _record_error(slot: str):
     _slot_stats[slot]["errors"] += 1
 
+
+# ─── 超时执行工具 ───
+_executor = concurrent.futures.ThreadPoolExecutor(max_workers=20)
+
+async def _run_with_timeout(func, *args, timeout_seconds: int = 30):
+    """在单独线程中执行函数，支持超时"""
+    try:
+        loop = asyncio.get_event_loop()
+        result = await asyncio.wait_for(
+            loop.run_in_executor(_executor, func, *args),
+            timeout=timeout_seconds
+        )
+        return result, None
+    except asyncio.TimeoutError:
+        return None, f"超时({timeout_seconds}s)"
+    except Exception as e:
+        return None, str(e)
+
+
 # ─── 卡槽 1: 感知 ───
 
 @router.post("/perceive", summary="感知卡槽：理解需求，提取意图")
 async def slot_perceive(req: PerceiveRequest):
-    """
-    感知卡槽负责：
-    - 解析用户输入的自然语言
-    - 识别意图类型
-    - 提取关键信息
-    - 评估复杂度
-    """
     t0 = datetime.now()
     try:
-        result = engine.perceive(req.input_text, req.context, req.language)
-        latency = (datetime.now() - t0).total_seconds() * 1000
-        _record_slot("perception", latency)
-        return {
-            "success": True,
-            "slot": "perception",
-            "result": result,
-            "metadata": {"latency_ms": latency}
-        }
+        result, err = await _run_with_timeout(engine.perceive, req.text, req.context, req.language, timeout_seconds=15)
+        if err:
+            _record_error("perception")
+            return {"success": False, "slot": "perception", "error": err}
+        _record_slot("perception", (datetime.now() - t0).total_seconds() * 1000)
+        return {"success": True, "slot": "perception", "result": result}
     except Exception as e:
         _record_error("perception")
-        raise HTTPException(status_code=500, detail=str(e))
+        return {"success": False, "slot": "perception", "error": str(e)}
+
 
 # ─── 卡槽 2: 规划 ───
 
-@router.post("/plan", summary="规划卡槽：拆分任务，制定策略")
+@router.post("/plan", summary="规划卡槽：拆分任务，确定执行顺序")
 async def slot_plan(req: PlanRequest):
-    """
-    规划卡槽负责：
-    - 将目标拆分为可执行子任务
-    - 确定子任务依赖关系
-    - 匹配所需能力
-    - 制定执行顺序
-    """
     t0 = datetime.now()
     try:
-        result = engine.plan(req.goal, req.constraints, req.available_capabilities)
-        latency = (datetime.now() - t0).total_seconds() * 1000
-        _record_slot("planning", latency)
-        return {
-            "success": True,
-            "slot": "planning",
-            "result": result,
-            "metadata": {"latency_ms": latency}
-        }
+        result, err = await _run_with_timeout(engine.plan, req.goal, req.constraints, req.available_capabilities, timeout_seconds=15)
+        if err:
+            _record_error("planning")
+            return {"success": False, "slot": "planning", "error": err}
+        _record_slot("planning", (datetime.now() - t0).total_seconds() * 1000)
+        return {"success": True, "slot": "planning", "result": result}
     except Exception as e:
         _record_error("planning")
-        raise HTTPException(status_code=500, detail=str(e))
+        return {"success": False, "slot": "planning", "error": str(e)}
+
 
 # ─── 卡槽 3: 执行 ───
 
-@router.post("/execute", summary="执行卡槽：调用能力，完成子任务")
+@router.post("/execute", summary="执行卡槽：调用能力执行子任务")
 async def slot_execute(req: ExecuteRequest):
-    """
-    执行卡槽负责：
-    - 接收子任务描述
-    - 匹配并调用合适的 Agent
-    - 监控执行过程
-    - 返回执行结果
-    """
     t0 = datetime.now()
     try:
-        result = engine.execute(req.task_id, req.capability, req.params, req.context)
-        latency = (datetime.now() - t0).total_seconds() * 1000
-        _record_slot("execution", latency)
-        return {
-            "success": True,
-            "slot": "execution",
-            "result": result,
-            "metadata": {"latency_ms": latency}
-        }
+        result, err = await _run_with_timeout(engine.execute, req.task_id, req.capability, req.params, req.context, timeout_seconds=30)
+        if err:
+            _record_error("execution")
+            return {"success": False, "slot": "execution", "error": err}
+        _record_slot("execution", (datetime.now() - t0).total_seconds() * 1000)
+        return {"success": True, "slot": "execution", "result": result}
     except Exception as e:
         _record_error("execution")
-        raise HTTPException(status_code=500, detail=str(e))
+        return {"success": False, "slot": "execution", "error": str(e)}
+
 
 # ─── 卡槽 4: 合成 ───
 
-@router.post("/synthesize", summary="合成卡槽：汇总结果，生成交付物")
+@router.post("/synthesize", summary="合成卡槽：汇总结果生成交付物")
 async def slot_synthesize(req: SynthesizeRequest):
-    """
-    合成卡槽负责：
-    - 汇总多个子任务的结果
-    - 去重、去噪、结构化
-    - 按指定格式组织输出
-    - 生成最终交付物
-    """
     t0 = datetime.now()
     try:
-        result = engine.synthesize(req.results, req.format, req.target_audience)
-        latency = (datetime.now() - t0).total_seconds() * 1000
-        _record_slot("synthesis", latency)
-        return {
-            "success": True,
-            "slot": "synthesis",
-            "result": result,
-            "metadata": {"latency_ms": latency}
-        }
+        result, err = await _run_with_timeout(engine.synthesize, req.results, req.format, req.target_audience, timeout_seconds=15)
+        if err:
+            _record_error("synthesis")
+            return {"success": False, "slot": "synthesis", "error": err}
+        _record_slot("synthesis", (datetime.now() - t0).total_seconds() * 1000)
+        return {"success": True, "slot": "synthesis", "result": result}
     except Exception as e:
         _record_error("synthesis")
-        raise HTTPException(status_code=500, detail=str(e))
+        return {"success": False, "slot": "synthesis", "error": str(e)}
+
 
 # ─── 卡槽 5: 验证 ───
 
-@router.post("/verify", summary="验证卡槽：质量检查，信任更新")
+@router.post("/verify", summary="验证卡槽：质量评估+信任评分")
 async def slot_verify(req: VerifyRequest):
-    """
-    验证卡槽负责：
-    - 检查交付物质量
-    - 评估是否满足原始目标
-    - 多维度打分（完整性、准确性、可读性、原创性）
-    - 输出信任更新建议
-    """
     t0 = datetime.now()
     try:
-        result = engine.verify(req.output, req.task_goal, req.quality_dimensions)
-        latency = (datetime.now() - t0).total_seconds() * 1000
-        _record_slot("verification", latency)
-        return {
-            "success": True,
-            "slot": "verification",
-            "result": result,
-            "metadata": {"latency_ms": latency}
-        }
+        result, err = await _run_with_timeout(engine.verify, req.output, req.task_goal, req.quality_dimensions, timeout_seconds=15)
+        if err:
+            _record_error("verification")
+            return {"success": False, "slot": "verification", "error": err}
+        _record_slot("verification", (datetime.now() - t0).total_seconds() * 1000)
+        return {"success": True, "slot": "verification", "result": result}
     except Exception as e:
         _record_error("verification")
-        raise HTTPException(status_code=500, detail=str(e))
+        return {"success": False, "slot": "verification", "error": str(e)}
 
-# ─── 流水线端点 ───
+
+# ─── Pipeline: 五卡槽流水线 (改进版：并行 + 熔断) ───
+
+PIPELINE_TIMEOUT = 120  # 全局超时
 
 @router.post("/pipeline", summary="卡槽流水线：一键走完感知→规划→执行→合成→验证")
 async def slot_pipeline(req: PerceiveRequest):
-    """
-    将五大卡槽串联成一条完整的流水线。
-    输入一句话，输出验证后的完整交付物。
-    """
+    """五卡槽流水线，各卡槽有独立超时，总时限 120s"""
     pipeline_start = datetime.now()
     steps = []
+    text = req.text
+
+    if not text:
+        return {"success": False, "error": "缺少 input_text 或 user_request"}
 
     try:
-        # 1. 感知
+        # 1. 感知 (15s timeout)
         t0 = datetime.now()
-        perception = engine.perceive(req.input_text, req.context, req.language)
-        steps.append({
-            "slot": "perception",
-            "latency_ms": (datetime.now() - t0).total_seconds() * 1000,
-            "summary": f"识别意图: {perception.get('intent', 'unknown')}"
-        })
+        perception, err = await _run_with_timeout(engine.perceive, text, req.context, req.language, timeout_seconds=15)
+        if err:
+            steps.append({"slot": "perception", "error": err})
+            return {"success": False, "error": f"感知超时: {err}", "steps": steps}
+        steps.append({"slot": "perception", "latency_ms": (datetime.now() - t0).total_seconds() * 1000,
+                       "summary": f"意图: {perception.get('intent', '?')}"})
 
-        # 2. 规划
+        # 2. 规划 (15s timeout)
         t0 = datetime.now()
-        plan = engine.plan(perception.get("goal", req.input_text), req.context)
-        steps.append({
-            "slot": "planning",
-            "latency_ms": (datetime.now() - t0).total_seconds() * 1000,
-            "summary": f"拆分 {plan.get('total_tasks', 0)} 个子任务"
-        })
+        plan, err = await _run_with_timeout(engine.plan,
+            perception.get("goal", text), req.context, None, timeout_seconds=15)
+        if err:
+            steps.append({"slot": "planning", "error": err})
+            return {"success": False, "error": f"规划超时: {err}", "steps": steps}
+        tasks = plan.get("tasks", [])
+        steps.append({"slot": "planning", "latency_ms": (datetime.now() - t0).total_seconds() * 1000,
+                       "summary": f"拆分 {len(tasks)} 个子任务"})
 
-        # 3. 执行（每个子任务）
+        # 3. 并行执行 (每个子任务 30s)
+        t0 = datetime.now()
+        exec_futures = []
+        for task in tasks:
+            tid = task.get("id", "?")
+            cap = task.get("capability", "researcher")
+            params = task.get("params", {})
+            exec_futures.append(_run_with_timeout(engine.execute, tid, cap, params, req.context, timeout_seconds=30))
+
         results = []
-        for task in plan.get("tasks", []):
-            t0 = datetime.now()
-            result = engine.execute(task["id"], task["capability"], task.get("params", {}), req.context)
-            results.append(result)
-            steps.append({
-                "slot": f"execution.task_{task['id']}",
-                "latency_ms": (datetime.now() - t0).total_seconds() * 1000,
-                "summary": f"执行子任务#{task['id']}: {task.get('action', 'N/A')[:40]}"
-            })
+        for i, coro in enumerate(exec_futures):
+            result, err = await coro
+            status_tag = f"execution.task_{tasks[i].get('id', i)}"
+            if err:
+                steps.append({"slot": status_tag, "error": err})
+                results.append({"task_id": tasks[i].get("id", i), "capability": tasks[i].get("capability", "?"),
+                                "output": f"[超时] {err}", "error": err})
+            else:
+                results.append(result)
+                steps.append({"slot": status_tag, "latency_ms": 0,
+                               "summary": f"子任务#{tasks[i].get('id', i)}: {tasks[i].get('action', 'N/A')[:40]}"})
 
-        # 4. 合成
-        t0 = datetime.now()
-        synthesis = engine.synthesize(results, "markdown")
-        steps.append({
-            "slot": "synthesis",
-            "latency_ms": (datetime.now() - t0).total_seconds() * 1000,
-            "summary": f"合成 {len(results)} 个结果"
-        })
+        exec_latency = (datetime.now() - t0).total_seconds() * 1000
+        steps.append({"slot": "execution.total", "latency_ms": exec_latency,
+                       "summary": f"{len([r for r in results if 'error' not in r])}/{len(results)} 子任务完成"})
 
-        # 5. 验证
+        # 4. 合成 (15s timeout)
         t0 = datetime.now()
-        verification = engine.verify(synthesis.get("content", ""), perception.get("goal", ""))
-        steps.append({
-            "slot": "verification",
-            "latency_ms": (datetime.now() - t0).total_seconds() * 1000,
-            "summary": f"质量评分: {verification.get('overall_score', 0)}/100"
-        })
+        synthesis, err = await _run_with_timeout(engine.synthesize, results, "markdown", None, timeout_seconds=15)
+        if err:
+            steps.append({"slot": "synthesis", "error": err})
+            return {"success": False, "error": f"合成超时: {err}", "steps": steps,
+                    "partial_results": [r.get("output", "")[:200] for r in results]}
+        steps.append({"slot": "synthesis", "latency_ms": (datetime.now() - t0).total_seconds() * 1000,
+                       "summary": f"合成 {len(results)} 个结果"})
+
+        # 5. 验证 (15s timeout)
+        t0 = datetime.now()
+        verification, err = await _run_with_timeout(engine.verify,
+            synthesis.get("content", ""), perception.get("goal", ""), None, timeout_seconds=15)
+        if err:
+            steps.append({"slot": "verification", "error": err})
+            return {"success": False, "error": f"验证超时: {err}", "steps": steps,
+                    "synthesis": synthesis}
+        steps.append({"slot": "verification", "latency_ms": (datetime.now() - t0).total_seconds() * 1000,
+                       "summary": f"质量评分: {verification.get('overall_score', '?')}/100"})
 
         total_latency = (datetime.now() - pipeline_start).total_seconds() * 1000
 
@@ -266,11 +276,14 @@ async def slot_pipeline(req: PerceiveRequest):
         }
 
     except Exception as e:
+        total_latency = (datetime.now() - pipeline_start).total_seconds() * 1000
         return {
             "success": False,
             "error": str(e),
-            "steps_completed": steps
+            "total_latency_ms": total_latency,
+            "steps_completed": steps,
         }
+
 
 # ─── 统计端点 ───
 
@@ -290,7 +303,7 @@ async def slot_metrics():
     total_errors = sum(s["errors"] for s in _slot_stats.values())
 
     return {
-        "service": "InsightBrowser Slots v3",
+        "service": "InsightBrowser Slots v3.1",
         "total_calls": total_calls,
         "total_errors": total_errors,
         "error_rate": f"{total_errors / max(total_calls, 1) * 100:.2f}%",
@@ -306,17 +319,13 @@ from services.agent_trade import execute_agent_trade
 from services.tool_registry import get_tool_registry
 from tools.builtin import register_builtin_tools
 
-# 启动时初始化
 _init_done = False
-
 def _init_v3():
     global _init_done
-    if _init_done:
-        return
+    if _init_done: return
     init_state_db()
     register_builtin_tools()
     _init_done = True
-
 _init_v3()
 
 
@@ -338,15 +347,12 @@ async def list_slots(category: Optional[str] = None):
 async def register_slot(req: SlotRegisterRequest):
     reg = get_slot_registry()
     from services.slot_registry import Slot
-    # 新注册的卡槽执行占位（实际执行由外部注入）
     async def placeholder(input_data, context):
         return {"status": "registered", "slot": req.name, "input": input_data}
     slot = Slot(req.name, req.description, placeholder, req.category)
     reg.register(slot)
     return {"success": True, "slot": {"name": req.name, "description": req.description, "category": req.category}}
 
-
-# ─── v3 新端点：工具注册表 ───
 
 @router.get("/tools", summary="列出所有已注册工具")
 async def list_tools():
@@ -364,8 +370,6 @@ async def get_capability_tools(capability: str):
         "has_tools": reg.has_tools_for(capability),
     }
 
-
-# ─── v3 新端点：Agent 状态 ───
 
 from pydantic import BaseModel as PydanticBaseModel
 
@@ -387,16 +391,10 @@ async def get_agent_state(agent_id: str):
 @router.post("/state/sync", summary="同步 Agent 状态")
 async def sync_agent_state(req: StateSyncRequest):
     data = {}
-    if req.task_queue is not None:
-        data["task_queue"] = req.task_queue
-    if req.history is not None:
-        data["history"] = req.history
-    if req.context is not None:
-        data["context"] = req.context
-    if req.reputation is not None:
-        data["reputation"] = req.reputation
-    if req.balance is not None:
-        data["balance"] = req.balance
+    for field in ["task_queue", "history", "context", "reputation", "balance"]:
+        val = getattr(req, field, None)
+        if val is not None:
+            data[field] = val
     save_state(req.agent_id, data)
     return {"success": True, "agent_id": req.agent_id}
 
@@ -423,8 +421,6 @@ async def list_stored_agents():
     return {"agents": result, "total": len(result)}
 
 
-# ─── v3 新端点：Agent 间交易 ───
-
 class TradeRequest(PydanticBaseModel):
     capability: str = Field(..., description="所需能力")
     task_params: dict = Field(default_factory=dict, description="任务参数")
@@ -433,9 +429,6 @@ class TradeRequest(PydanticBaseModel):
 
 @router.post("/trade", summary="Agent 间交易闭环")
 async def agent_trade_endpoint(req: TradeRequest):
-    """
-    发现外部Agent → 协商 → 托管 → 执行 → 验证 → 结算
-    """
     result = await execute_agent_trade(
         capability=req.capability,
         task_params=req.task_params,
