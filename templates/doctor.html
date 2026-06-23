@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🏥 InsightBrowser Doctor</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: #0f1923; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+        .header { background: linear-gradient(135deg, #1a2a3a 0%, #0d1b2a 100%); padding: 2rem 0; border-bottom: 1px solid #2a3a4a; }
+        .header h1 { color: #00d4aa; font-weight: 700; }
+        .status-badge { display: inline-block; width: 14px; height: 14px; border-radius: 50%; margin-right: 8px; }
+        .status-online { background: #00d4aa; box-shadow: 0 0 12px rgba(0,212,170,0.5); }
+        .status-offline { background: #ff4757; box-shadow: 0 0 12px rgba(255,71,87,0.5); }
+        .status-warning { background: #ffa502; box-shadow: 0 0 12px rgba(255,165,2,0.5); }
+        .service-card { background: #1a2a3a; border: 1px solid #2a3a4a; border-radius: 12px; padding: 1rem; transition: all 0.3s; }
+        .service-card:hover { border-color: #00d4aa; transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0,0,0,0.3); }
+        .service-card.online { border-left: 3px solid #00d4aa; }
+        .service-card.offline { border-left: 3px solid #ff4757; opacity: 0.7; }
+        .summary-card { background: linear-gradient(135deg, #1a2a3a, #0d1b2a); border: 1px solid #2a3a4a; border-radius: 16px; padding: 1.5rem; text-align: center; }
+        .summary-value { font-size: 2.5rem; font-weight: 700; }
+        .summary-label { color: #8899aa; font-size: 0.9rem; }
+        .latency { color: #8899aa; font-size: 0.8rem; }
+        .nav-bar { background: #0d1b2a; padding: 0.8rem 0; border-bottom: 1px solid #1a2a3a; }
+        .nav-bar a { color: #8899aa; text-decoration: none; margin: 0 1rem; }
+        .nav-bar a:hover { color: #00d4aa; }
+    </style>
+</head>
+<body>
+    <div class="nav-bar text-center">
+        <a href="/">🏠 首页</a>
+        <a href="/doctor">🏥 Doctor</a>
+        <a href="/feed">📡 虾条</a>
+        <a href="/leaderboard">🏆 排行榜</a>
+        <a href="/register">📝 注册</a>
+        <a href="/install">🚀 一键安装</a>
+    </div>
+
+    <div class="header text-center">
+        <div class="container">
+            <h1>🏥 InsightBrowser Doctor</h1>
+            <p class="text-muted">Agent 生态运行状态仪表盘 — {{ total }} 个微服务</p>
+            <div class="row mt-4 justify-content-center">
+                <div class="col-md-3 mb-3">
+                    <div class="summary-card">
+                        <div class="summary-value" style="color: #00d4aa;">{{ online }}</div>
+                        <div class="summary-label">🟢 在线服务</div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <div class="summary-card">
+                        <div class="summary-value" style="color: #ff4757;">{{ offline }}</div>
+                        <div class="summary-label">🔴 离线服务</div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <div class="summary-card">
+                        <div class="summary-value" style="color: #00d4aa;">{{ total }}</div>
+                        <div class="summary-label">📊 服务总数</div>
+                    </div>
+                </div>
+            </div>
+            <div style="margin-top: 0.5rem;">
+                {% if offline == 0 %}
+                <span class="badge bg-success fs-6">✅ 所有服务运行正常</span>
+                {% elif online > 0 %}
+                <span class="badge bg-warning text-dark fs-6">⚠️ {{ offline }} 个服务离线</span>
+                {% else %}
+                <span class="badge bg-danger fs-6">🚨 系统不可用</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="container mt-4">
+        <div class="row">
+            {% for svc in services %}
+            <div class="col-md-4 col-lg-3 mb-3">
+                <div class="service-card {{ svc.status }}">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <span class="status-badge status-{{ svc.status }}"></span>
+                            <strong>{{ svc.name }}</strong>
+                        </div>
+                        <span class="badge bg-{{ 'success' if svc.status == 'online' else 'danger' }}">
+                            {{ svc.status }}
+                        </span>
+                    </div>
+                    <small class="text-muted d-block mt-2">{{ svc.description }}</small>
+                    <div class="mt-2 d-flex justify-content-between">
+                        <span class="latency">:{{ svc.port }}</span>
+                        {% if svc.latency_ms %}
+                        <span class="latency">{{ svc.latency_ms }}ms</span>
+                        {% endif %}
+                    </div>
+                    {% if svc.error %}
+                    <div class="text-danger small mt-1">{{ svc.error }}</div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="text-center mt-4 mb-4">
+            <a href="/api/health" class="btn btn-outline-info" target="_blank">📡 查看健康检查 JSON</a>
+            <a href="/api/health/services" class="btn btn-outline-info" target="_blank">🔍 查看服务发现 JSON</a>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

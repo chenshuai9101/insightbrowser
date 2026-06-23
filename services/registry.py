@@ -48,3 +48,23 @@ def search(q: str = "", type_filter: str = "",
 def stats() -> dict:
     """Get platform statistics."""
     return {"success": True, "stats": get_stats()}
+
+
+def join_agent(data: dict) -> dict:
+    """Join the InsightBrowser ecosystem - register + auto-profile."""
+    from models import init_or_get_profile
+    
+    site = register_site(data)
+    site_id = site["site_id"]
+    
+    try:
+        init_or_get_profile(site_id)
+    except Exception:
+        pass
+    
+    return {
+        "success": True,
+        "message": "🎉 入驻成功！Agent 已加入 InsightBrowser 生态",
+        "site_id": site_id,
+        "site": site,
+    }

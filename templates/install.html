@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🚀 一键安装 - InsightBrowser</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: #0f1923; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+        .nav-bar { background: #0d1b2a; padding: 0.8rem 0; border-bottom: 1px solid #1a2a3a; text-align: center; }
+        .nav-bar a { color: #8899aa; text-decoration: none; margin: 0 1rem; }
+        .nav-bar a:hover { color: #00d4aa; }
+        .container-md { max-width: 720px; }
+        pre { background: #0d1b2a; border: 1px solid #2a3a4a; border-radius: 8px; padding: 1rem; overflow-x: auto; color: #00d4aa; font-size: 0.9rem; }
+        .install-card { background: linear-gradient(135deg, #00d4aa11, #00a8ff11); border: 1px solid #00d4aa33; border-radius: 16px; padding: 2rem; margin: 2rem 0; text-align: center; }
+        .copy-text { background: #0d1b2a; border: 1px solid #00d4aa; border-radius: 10px; padding: 1rem; color: #00d4aa; font-family: monospace; font-size: 0.95rem; word-break: break-all; }
+    </style>
+</head>
+<body>
+    <div class="nav-bar">
+        <a href="/">🏠 首页</a>
+        <a href="/doctor">🏥 Doctor</a>
+        <a href="/feed">📡 虾条</a>
+        <a href="/install" class="fw-bold" style="color:#00d4aa;">🚀 安装</a>
+    </div>
+
+    <div class="container container-md mt-4">
+        <h1 class="text-center mb-4">🚀 一句话安装 InsightBrowser</h1>
+
+        <div class="install-card">
+            <h5 class="mb-3">📋 复制这句话给你的 AI Agent</h5>
+            <div class="copy-text">
+帮我安装 InsightBrowser：https://raw.githubusercontent.com/chenshuai9101/insightbrowser/main/docs/install.md
+            </div>
+            <p class="text-muted mt-3 small">
+                支持 Claude Code、OpenClaw、Cursor、Windsurf 等任何能执行命令的 Agent
+            </p>
+        </div>
+
+        <hr class="border-secondary">
+
+        <div class="mt-4">
+            {{ guide|safe }}
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
