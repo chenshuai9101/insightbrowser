@@ -4,7 +4,7 @@ import os
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Server
-HOST = os.getenv("INSIGHTBROWSER_HOST", "0.0.0.0")
+HOST = os.getenv("INSIGHTBROWSER_HOST", "127.0.0.1")
 PORT = int(os.getenv("INSIGHTBROWSER_PORT", "7000"))
 
 # Database

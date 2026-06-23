@@ -49,12 +49,14 @@ async def startup():
 
 if __name__ == "__main__":
     import uvicorn
+    reload_enabled = os.getenv("INSIGHTBROWSER_RELOAD", "0") == "1"
     print(f"""
 🔍 {PLATFORM_NAME} v{PLATFORM_VERSION}
 {'=' * 50}
   Home:    http://localhost:{PORT}
   API:     http://localhost:{PORT}/api
   Docs:    http://localhost:{PORT}/docs
+  Reload:  {"on" if reload_enabled else "off"}
 {'=' * 50}
 """)
-    uvicorn.run("main:app", host=HOST, port=PORT, reload=True)
+    uvicorn.run("main:app", host=HOST, port=PORT, reload=reload_enabled)
