@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile all Python sources
+        run: |
+          set -e
+          find . -name "*.py" -not -path "./.git/*" -print0 | xargs -0 -n1 python -m py_compile
+      - name: Import smoke test (core registry)
+        run: |
+          python - <<'EOF'
+          import sys; sys.path.insert(0, ".")
+          import config
+          import models
+          print("core imports OK")
+          EOF

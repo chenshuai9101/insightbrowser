@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """InsightBrowser Registry - AHP Protocol Agent Directory Service"""
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import RedirectResponse
 import os
 
 from config import (
@@ -15,6 +15,14 @@ from routes.api import router as api_router
 from routes.pages import router as pages_router, init_templates
 from services.registry import bootstrap
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Initialize database on startup."""
+    bootstrap()
+    print("  ✅ Database initialized")
+    yield
+
+
 # Create FastAPI app
 app = FastAPI(
     title=PLATFORM_NAME,
@@ -22,6 +30,7 @@ app = FastAPI(
     version=PLATFORM_VERSION,
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 # Mount static files
@@ -38,14 +47,6 @@ init_templates(TEMPLATES_DIR)
 # Register routers
 app.include_router(pages_router)
 app.include_router(api_router)
-
-
-@app.on_event("startup")
-async def startup():
-    """Initialize database on startup."""
-    bootstrap()
-    print(f"  ✅ Database initialized")
-
 
 if __name__ == "__main__":
     import uvicorn
