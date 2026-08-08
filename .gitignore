@@ -36,3 +36,9 @@ npm-debug.log*
 .idea/
 .vscode/
 *.swp
+
+# Runtime data
+*.db
+*.db-shm
+*.db-wal
+data/
