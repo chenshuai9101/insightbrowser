@@ -1,64 +1,39 @@
-# InsightLabs 项目状态
+# InsightLabs 项目状态（维护版）
 
-> 更新时间: 2026-04-26 09:15
-> CEO: 牧云野（全权推进）
-> 帅哥: 待通知完成
+> 更新时间: 2026-08-18（由自动化审查更新）
+> 本表如实反映“可运行”与“规划中”，避免把骨架当作成品对外宣称。
 
----
+## 可运行服务（能启动、有路由）
 
-## 🏢 架构总览
+| 组件 | 端口 | 状态 | 说明 |
+|:----|:---:|:----:|:----|
+| Registry | 7000 | ✅ | 注册/发现/搜索/统计/Profile/虾条/RPC 调用/反馈/信誉 |
+| Hosting | 7001 | ✅ | 站点创建/套餐/agent.json/注册 Registry//action 端点 |
+| AHP Proxy | 7002 | ✅ | agent.json/info/action/data/stream（代理层） |
+| Reliability | 7003 | ✅ | 心跳/评级/账本（L3 信任层） |
+| Commerce | 7004 | ✅ | 商家入驻网关 |
+| InsightSee | 9090 | ✅ | 需求解码（关键词规则 + 可选 LLM） |
+| InsightHub | 8080 | ✅ | SaaS 面板（接 InsightLens/InsightSee，失败显式降级 mock） |
+| InsightLens | 9091(HTTP) | ✅ | 网页提取 MCP + HTTP 服务 |
+| Content | 7024 | ✅ | AEP/1.0 内容层 |
 
-```
-┌─────────────────────────────────────────────────────┐
-│  L3: Trust & Credit Layer (7003)                    │
-│  ├─ Reliability Registry → 心跳/评级/排行榜        │
-│  └─ Credit Ledger → 账本/交易/余额                  │
-├─────────────────────────────────────────────────────┤
-│  L2: Agent Interaction Layer (7002 + SDK)           │
-│  ├─ AHP Proxy → agent.json / info / action / stream │
-│  └─ Agent SDK → discover / call / stream / register  │
-├─────────────────────────────────────────────────────┤
-│  L1: Information Layer (7000 / 7001 / 9090 / 8080)  │
-│  ├─ Registry → 站点注册/发现/搜索                    │
-│  ├─ Hosting → 站点创建/管理/套餐                      │
-│  ├─ InsightSee → 18行业/884关键词/6维度               │
-│  └─ InsightHub → SaaS 管理面板                        │
-└─────────────────────────────────────────────────────┘
-```
+## 骨架 / 规划中（有 main.py 但路由未实现，勿宣称可用）
 
-## 状态
+approval · audit · auth · benchmark · bi · billing · devportal · feedback ·
+frontend · matching · monitor · notify · queue · sandbox · search · slots · wallet
 
-### L1 信息层 ✅ 100%
-| 组件 | 端口 | 状态 |
-|:----|:---:|:----:|
-| InsightLens (MCP) | — | 6工具，注册到 OpenClaw MCP |
-| Registry | 7000 | 注册/发现/搜索/统计 |
-| Hosting | 7001 | 站点创建/套餐/agent.json |
-| InsightSee | 9090 | 18行业/884关键词 |
-| InsightHub | 8080 | SaaS 管理后台 |
+> 说明：这些目录只有入口文件，import 的路由模块尚不存在，启动即失败。
+> 上线前请先实现核心路由，或从对外文档中移除“22 个微服务”的表述。
 
-### L2 交互层 ✅ 100%
-| 组件 | 端口 | 状态 |
-|:----|:---:|:----:|
-| AHP Proxy | 7002 | agent.json/info/action/data/stream |
-| Agent SDK | — | discover/call/stream/register |
-| 端到端验证 | — | 搜索→发现→agent.json→info→action→stream |
+## 已知待办（P0）
 
-### L3 信任+经济层 ✅ 100%
-| 组件 | 端口 | 状态 |
-|:----|:---:|:----:|
-| Reliability Registry | 7003 | 心跳(30s)/评级(S/A/B/C/D)/排行榜 |
-| Credit Ledger | 7003 | 积分(1000初始)/交易/余额/审计 |
-| SDK min_rating | — | 按评级过滤搜索 |
-| AHP 集成 | 7002 | 站点列表含信任评级 |
-
-## 运行端口
-- Registry: 7000 ✅
-- Hosting: 7001 ✅
-- AHP Proxy: 7002 ✅
-- Reliability: 7003 ✅
-- InsightSee: 9090 ✅
-- InsightHub: 8080 ✅
+- [x] Registry: SSRF 拦截、call/feedback 端点补全、X-Agent-Key 鉴权
+- [x] Hosting: owner key 鉴权、套餐服务端分配、Registry 注册链路修复
+- [x] InsightLens: 默认校验 TLS、新增 HTTP 服务层
+- [x] InsightHub: 真实调用 InsightLens/InsightSee、签名会话、显式 mock 标记
+- [ ] 公网部署时设置 INSIGHTBROWSER_STRICT_SSRF=1 与 INSIGHTHUB_SECRET
+- [ ] 清理 InsightLabs/ 与顶层重复代码（保留单一源码位置）
 
 ## 一键启动
-`start-insightlabs.sh` — 启动全部 6 个服务
+
+`start-insightlabs.sh` — 启动 9 个服务（路径可用 IB_*_DIR 环境变量覆盖）。

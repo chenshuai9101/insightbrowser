@@ -1,172 +1,111 @@
 #!/usr/bin/env bash
 # ============================================================
-# InsightLabs 一键启动脚本
-# 启动所有平台服务：AHP + Registry + Hosting + InsightSee + InsightHub + Reliability
-# Port: 7002 / 7000 / 7001 / 9090 / 8080 / 7003
+# InsightLabs 一键启动脚本（v2）
+# 启动：Registry / Hosting / AHP / Reliability / InsightSee /
+#       InsightHub / Commerce / InsightLens(HTTP) / Content
+#
+# 路径可通过环境变量覆盖（默认假定各仓库平级存放）：
+#   IB_REGISTRY_DIR  insightbrowser 仓库路径（默认本脚本所在目录）
+#   IB_HOSTING_DIR   insightbrowser-hosting 仓库路径
+#   IB_AHP_DIR       AHP 代理路径（默认 $IB_REGISTRY_DIR/insightbrowser-ahp）
+#   IB_RELIABILITY_DIR 可靠性服务路径（默认 $IB_REGISTRY_DIR/insightbrowser-reliability）
+#   IB_COMMERCE_DIR  Commerce 路径（默认 $IB_REGISTRY_DIR/insightbrowser-commerce）
+#   IB_SEE_DIR       insightsee 仓库路径
+#   IB_HUB_DIR       insighthub 仓库路径
+#   IB_LENS_DIR      insightlens 仓库路径
+#   IB_CONTENT_DIR   insightbrowser-content 仓库路径
+#
+# 其他：
+#   KILL_PORTS=1     启动前先杀掉占用端口的旧进程（默认不杀）
+#   PORT_PREFIX=71   端口前缀（默认 70，即 7000/7001/...；便于多实例测试）
 # ============================================================
+set -euo pipefail
 
-set -e
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-LOGDIR="$ROOT/.logs"
+LOGDIR="${LOGDIR:-$ROOT/.logs}"
 mkdir -p "$LOGDIR"
 
+REGISTRY_DIR="${IB_REGISTRY_DIR:-$ROOT}"
+HOSTING_DIR="${IB_HOSTING_DIR:-$(dirname "$ROOT")/insightbrowser-hosting}"
+SEE_DIR="${IB_SEE_DIR:-$(dirname "$ROOT")/insightsee}"
+HUB_DIR="${IB_HUB_DIR:-$(dirname "$ROOT")/insighthub}"
+LENS_DIR="${IB_LENS_DIR:-$(dirname "$ROOT")/insightlens}"
+CONTENT_DIR="${IB_CONTENT_DIR:-$(dirname "$ROOT")/insightbrowser-content}"
+AHP_DIR="${IB_AHP_DIR:-$REGISTRY_DIR/insightbrowser-ahp}"
+RELIABILITY_DIR="${IB_RELIABILITY_DIR:-$REGISTRY_DIR/insightbrowser-reliability}"
+COMMERCE_DIR="${IB_COMMERCE_DIR:-$REGISTRY_DIR/insightbrowser-commerce}"
+
+# 端口前缀：默认 70 -> 7000/7001/...，可用 PORT_PREFIX=71 变更为 7100/7101/...
+PREFIX="${PORT_PREFIX:-70}"
+PORT_REGISTRY="${PREFIX}00"
+PORT_HOSTING="${PREFIX}01"
+PORT_AHP="${PREFIX}02"
+PORT_RELIABILITY="${PREFIX}03"
+PORT_COMMERCE="${PREFIX}04"
+PORT_LENS="${PREFIX}91"
+PORT_CONTENT="${PREFIX}24"
+
+require_dir() {
+  [ -d "$1" ] || { echo "❌ 目录不存在: $1（请用 IB_*_DIR 指定仓库路径）"; exit 1; }
+}
+
+require_dir "$REGISTRY_DIR"
+require_dir "$HOSTING_DIR"
+require_dir "$SEE_DIR"
+require_dir "$HUB_DIR"
+require_dir "$LENS_DIR"
+require_dir "$CONTENT_DIR"
+require_dir "$AHP_DIR"
+require_dir "$RELIABILITY_DIR"
+require_dir "$COMMERCE_DIR"
+
 echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║  🏢 InsightLabs — 启动所有服务                             ║"
+echo "║  🏢 InsightLabs — 启动所有服务（v2）                        ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 
-# 清理旧进程
-echo "🧹 清理旧进程..."
-for port in 7000 7001 7002 7003 7004 7005 9090 8080; do
-    pid=$(lsof -ti :$port 2>/dev/null) && kill $pid 2>/dev/null && echo "  端口$port 已释放"
-done
-sleep 1
-
-# 1. InsightBrowser Registry
-echo ""
-echo "  [1/6] 🔍 InsightBrowser Registry → :7000"
-cd "$ROOT/insightbrowser"
-python3 main.py > "$LOGDIR/registry.log" 2>&1 &
-sleep 2
-if lsof -ti :7000 >/dev/null 2>&1; then
-    echo "       ✅ Registry 运行中"
-else
-    echo "       ❌ Registry 启动失败"
-    tail -5 "$LOGDIR/registry.log"
-    exit 1
+if [ "${KILL_PORTS:-0}" = "1" ]; then
+  echo "🧹 清理旧进程..."
+  for port in "$PORT_REGISTRY" "$PORT_HOSTING" "$PORT_AHP" "$PORT_RELIABILITY" "$PORT_COMMERCE" "$PORT_LENS" "$PORT_CONTENT"; do
+    pid=$(lsof -ti :"$port" 2>/dev/null || true) && kill "$pid" 2>/dev/null && echo "  端口 $port 已释放" || true
+  done
+  sleep 1
 fi
 
-# 2. InsightBrowser Hosting
-echo "  [2/6] 🌐 InsightBrowser Hosting → :7001"
-cd "$ROOT/insightbrowser-hosting"
-python3 main.py > "$LOGDIR/hosting.log" 2>&1 &
-sleep 2
-if lsof -ti :7001 >/dev/null 2>&1; then
-    echo "       ✅ Hosting 运行中"
-else
-    echo "       ❌ Hosting 启动失败"
-    tail -5 "$LOGDIR/hosting.log"
-    exit 1
-fi
-
-# 3. InsightBrowser AHP Proxy
-echo "  [3/6] 🔗 InsightBrowser AHP Proxy → :7002"
-cd "$ROOT/InsightLabs/insightbrowser-ahp"
-pip install -q -r requirements.txt 2>/dev/null || true
-python3 main.py > "$LOGDIR/ahp.log" 2>&1 &
-sleep 2
-if lsof -ti :7002 >/dev/null 2>&1; then
-    echo "       ✅ AHP Proxy 运行中"
-else
-    echo "       ❌ AHP Proxy 启动失败"
-    tail -5 "$LOGDIR/ahp.log"
-    exit 1
-fi
-
-# 4. InsightBrowser Reliability
-echo "  [4/6] 🛡️ InsightBrowser Reliability → :7003"
-cd "$ROOT/InsightLabs/insightbrowser-reliability"
-pip install -q -r requirements.txt 2>/dev/null || true
-python3 main.py > "$LOGDIR/reliability.log" 2>&1 &
-sleep 2
-if lsof -ti :7003 >/dev/null 2>&1; then
-    echo "       ✅ Reliability 运行中（心跳检测每30s）"
-else
-    echo "       ❌ Reliability 启动失败"
-    tail -5 "$LOGDIR/reliability.log"
-    exit 1
-fi
-
-# 5. InsightSee API
-echo "  [5/6] 🔎 InsightSee API → :9090"
-cd "$ROOT/insightsee-skill"
-python3 api_server.py > "$LOGDIR/insightsee.log" 2>&1 &
-sleep 2
-if lsof -ti :9090 >/dev/null 2>&1; then
-    echo "       ✅ InsightSee 运行中"
-else
-    echo "       ❌ InsightSee 启动失败"
-    tail -5 "$LOGDIR/insightsee.log"
-    exit 1
-fi
-
-# 6. InsightHub Dashboard
-echo "  [6/7] 📊 InsightHub Dashboard → :8080"
-cd "$ROOT/insighthub"
-python3 main.py > "$LOGDIR/insighthub.log" 2>&1 &
-sleep 2
-if lsof -ti :8080 >/dev/null 2>&1; then
-    echo "       ✅ InsightHub 运行中"
-
-# 7. Commerce Bridge
-echo "  [7/8] 🏪 Commerce Bridge → :7004"
-cd "$ROOT/InsightLabs/insightbrowser-commerce"
-python3 run.py > "$LOGDIR/commerce.log" 2>&1 &
-sleep 2
-if lsof -ti :7004 >/dev/null 2>&1; then
-    echo "       ✅ Commerce Bridge 运行中"
-else
-    echo "       ❌ Commerce Bridge 启动失败"
-    tail -5 "$LOGDIR/commerce.log"
-    exit 1
-fi
-else
-    echo "       ❌ InsightHub 启动失败"
-    tail -5 "$LOGDIR/insighthub.log"
-    exit 1
-fi
-
-# 8. A-Hub Slots
-cd "$ROOT/InsightLabs/insightbrowser-slots"
-pip3 install -q fastapi uvicorn pydantic 2>/dev/null
-echo "  [8/8] 🔲 A-Hub Slots → :7005"
-python3 -c "import uvicorn, main; uvicorn.run(main.app, host='0.0.0.0', port=7005)" > "$LOGDIR/slots.log" 2>&1 &
-sleep 2
-if lsof -ti :7005 >/dev/null 2>&1; then
-    echo "       ✅ Slots 卡槽系统 运行中"
-else
-    echo "       ❌ Slots 启动失败"
-    tail -5 "$LOGDIR/slots.log"
-    exit 1
-fi
-
-echo ""
-echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║  ✅ 所有服务已启动                                        ║"
-echo "║                                                              ║"
-echo "║  Registry     → http://localhost:7000  (服务目录)           ║"
-echo "║  Hosting      → http://localhost:7001  (站点托管)           ║"
-echo "║  AHP Proxy    → http://localhost:7002  (Agent 协议)         ║"
-echo "║  Reliability  → http://localhost:7003  (信任+账本)          ║"
-echo "║  InsightSee   → http://localhost:9090  (需求洞察)           ║"
-echo "║  InsightHub   → http://localhost:8080  (企业面板)           ║"
-echo "║  Commerce     → http://localhost:7004  (商家入驻)           ║"
-echo "║  A-Hub Slots  → http://localhost:7005  (卡槽系统)           ║"
-echo "║                                                              ║"
-echo "║  Agent SDK: insightbrowser_sdk/ (零依赖)                    ║"
-echo "║  AHP 协议:  ahp/0.1                                        ║"
-echo "║                                                              ║"
-echo "║  日志目录: $LOGDIR                               ║"
-echo "╚══════════════════════════════════════════════════════════════╝"
-
-# 快速自检
-echo ""
-echo "🧪 快速自检..."
-for port in 7000 7001 7002 7003 7005 9090 8080; do
-    status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:$port/ 2>/dev/null || echo "ERR")
-    case $port in
-        7000) name="Registry" ;;
-        7001) name="Hosting" ;;
-        7002) name="AHP Proxy" ;;
-        7003) name="Reliability" ;;
-        9090) name="InsightSee" ;;
-        8080) name="InsightHub" ;;
-    esac
-    if [ "$status" = "200" ] || [ "$status" = "307" ] || [ "$status" = "404" ]; then
-        echo "  ✅ $name (:${port}) — HTTP $status"
-    else
-        echo "  ⚠️  $name (:${port}) — HTTP $status (可能仍在启动)"
+start_service() {
+  local name="$1" dir="$2" port="$3" cmd="$4"
+  echo "  [$name] → :$port"
+  ( cd "$dir" && eval "$cmd" > "$LOGDIR/$name.log" 2>&1 & echo $! > "$LOGDIR/$name.pid" )
+  for _ in $(seq 1 30); do
+    if lsof -ti :"$port" >/dev/null 2>&1; then
+      echo "       ✅ $name 运行中 (pid $(cat "$LOGDIR/$name.pid"))"
+      return 0
     fi
-done
+    sleep 1
+  done
+  echo "       ❌ $name 启动失败"; tail -5 "$LOGDIR/$name.log"; return 1
+}
+
+start_service "registry"    "$REGISTRY_DIR"    "$PORT_REGISTRY"    "INSIGHTBROWSER_PORT=$PORT_REGISTRY python3 main.py"
+start_service "hosting"     "$HOSTING_DIR"     "$PORT_HOSTING"     "INSIGHTBROWSER_HOSTING_PORT=$PORT_HOSTING INSIGHTBROWSER_REGISTRY_URL=http://127.0.0.1:$PORT_REGISTRY python3 main.py"
+start_service "ahp"         "$AHP_DIR"         "$PORT_AHP"         "python3 main.py"
+start_service "reliability" "$RELIABILITY_DIR" "$PORT_RELIABILITY" "python3 main.py"
+start_service "insightsee"  "$SEE_DIR"         "9090"              "python3 api_server.py"
+start_service "insighthub"  "$HUB_DIR"         "8080"              "python3 main.py"
+start_service "commerce"    "$COMMERCE_DIR"    "$PORT_COMMERCE"    "python3 run.py"
+start_service "insightlens" "$LENS_DIR"        "$PORT_LENS"        "INSIGHTLENS_HTTP_PORT=$PORT_LENS python3 -m insightlens --http"
+start_service "content"     "$CONTENT_DIR"     "$PORT_CONTENT"     "python3 main.py"
 
 echo ""
-echo "🎉 InsightLabs 已就绪 — 端到端 Agent 互联网基础设施"
+echo "╔══════════════════════════════════════════════════════════════╗"
+echo "║  ✅ 全部服务已启动                                          ║"
+echo "║  Registry     → http://localhost:$PORT_REGISTRY   (服务目录) ║"
+echo "║  Hosting      → http://localhost:$PORT_HOSTING   (站点托管)  ║"
+echo "║  AHP Proxy    → http://localhost:$PORT_AHP       (Agent 协议)║"
+echo "║  Reliability  → http://localhost:$PORT_RELIABILITY (信任)    ║"
+echo "║  InsightSee   → http://localhost:9090            (需求洞察)  ║"
+echo "║  InsightHub   → http://localhost:8080            (企业面板)  ║"
+echo "║  Commerce     → http://localhost:$PORT_COMMERCE   (商家入驻) ║"
+echo "║  InsightLens  → http://localhost:$PORT_LENS       (提取 HTTP)║"
+echo "║  Content      → http://localhost:$PORT_CONTENT     (AEP 内容)║"
+echo "║  日志: $LOGDIR                                         ║"
+echo "╚══════════════════════════════════════════════════════════════╝"

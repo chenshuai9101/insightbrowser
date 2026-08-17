@@ -13,6 +13,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
       - name: Compile all Python sources
         run: |
           set -e
@@ -25,3 +27,11 @@ jobs:
           import models
           print("core imports OK")
           EOF
+      - name: End-to-end smoke test
+        run: |
+          python3 main.py > /tmp/registry-ci.log 2>&1 &
+          for i in $(seq 1 20); do
+            curl -s -o /dev/null http://127.0.0.1:7000/api/health && break
+            sleep 1
+          done
+          python3 scripts/smoke_test.py

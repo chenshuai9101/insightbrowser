@@ -1,10 +1,48 @@
 """InsightBrowser Registry - Agent API Endpoints"""
+import time
+from collections import defaultdict
 from fastapi import APIRouter, Query, HTTPException, Request
 from fastapi.responses import PlainTextResponse
-from services.registry import register, lookup, search, stats, join_agent
-from models import register_site, check_all_services, check_service_health, SERVICE_MAP, init_or_get_profile, update_profile, get_capability_radar, get_agent_leaderboard
+from services.registry import register, lookup, search, stats
+from config import PLATFORM_VERSION
+from models import (
+    check_all_services, init_or_get_profile, update_profile, get_capability_radar,
+    get_agent_leaderboard, get_site, is_safe_target_url, find_site_by_key,
+    check_agent_endpoint_health, call_agent, get_agent_call_logs,
+    add_agent_feedback, get_agent_feedback, build_agent_manifest,
+    create_agent_post, add_agent_comment, like_agent_post,
+)
 
 router = APIRouter(prefix="/api", tags=["Agent API"])
+
+# 轻量内存频控：按 agent_id/路径 限制写操作频率
+_write_rate: dict = defaultdict(list)
+
+
+def _check_write_rate(key: str, limit: int = 10, window: float = 60.0):
+    now = time.time()
+    _write_rate[key] = [t for t in _write_rate[key] if now - t < window]
+    if len(_write_rate[key]) >= limit:
+        raise HTTPException(status_code=429, detail="操作过于频繁，请稍后再试")
+    _write_rate[key].append(now)
+
+
+def _validate_endpoint(endpoint: str):
+    endpoint = (endpoint or "").strip()
+    if not endpoint:
+        return
+    ok, reason = is_safe_target_url(endpoint)
+    if not ok:
+        raise HTTPException(status_code=400, detail=f"endpoint 不安全: {reason}")
+
+
+def _require_agent_key(request: Request) -> str:
+    """校验 X-Agent-Key，返回其所属站点 ID。"""
+    key = request.headers.get("X-Agent-Key", "")
+    owner = find_site_by_key(key)
+    if not owner:
+        raise HTTPException(status_code=401, detail="X-Agent-Key 无效或缺失")
+    return owner
 
 
 @router.post("/register")
@@ -13,6 +51,9 @@ async def api_register(data: dict):
     try:
         if not data.get("name"):
             raise HTTPException(status_code=400, detail="name is required")
+        if len(str(data.get("name", ""))) > 200 or len(str(data.get("description", ""))) > 2000:
+            raise HTTPException(status_code=400, detail="name/description 超长")
+        _validate_endpoint(data.get("endpoint", ""))
         result = register(data)
         return result
     except HTTPException:
@@ -43,6 +84,69 @@ async def api_site(site_id: str):
     return result
 
 
+@router.get("/site/{site_id}/agent.json")
+async def api_site_manifest(site_id: str):
+    """Return the agent.json manifest for a registered site."""
+    manifest = build_agent_manifest(site_id)
+    if not manifest:
+        raise HTTPException(status_code=404, detail="站点未找到")
+    return manifest
+
+
+@router.get("/site/{site_id}/health")
+async def api_site_health(site_id: str):
+    """Check a registered agent endpoint's health."""
+    if not get_site(site_id):
+        raise HTTPException(status_code=404, detail="站点未找到")
+    return check_agent_endpoint_health(site_id)
+
+
+@router.post("/site/{site_id}/call")
+async def api_call_site(site_id: str, request: Request, data: dict):
+    """Call a registered agent through the /action protocol."""
+    caller = _require_agent_key(request)
+    if not get_site(site_id):
+        raise HTTPException(status_code=404, detail="站点未找到")
+    if len(data.get("action", "")) > 200:
+        raise HTTPException(status_code=400, detail="action 超长")
+    caller_id = data.pop("caller_id", caller) or caller
+    return call_agent(site_id, data, caller_id=caller_id)
+
+
+@router.get("/site/{site_id}/calls")
+async def api_site_calls(site_id: str, limit: int = Query(50, ge=1, le=200)):
+    """List call logs for a site."""
+    if not get_site(site_id):
+        raise HTTPException(status_code=404, detail="站点未找到")
+    return {"success": True, "calls": get_agent_call_logs(site_id, limit=limit)}
+
+
+@router.post("/site/{site_id}/feedback")
+async def api_feedback(site_id: str, request: Request, data: dict):
+    """盖章/撤回一个 Agent（需要操作方提供自己的 X-Agent-Key）."""
+    actor = _require_agent_key(request)
+    if not get_site(site_id):
+        raise HTTPException(status_code=404, detail="站点未找到")
+    try:
+        fb = add_agent_feedback(
+            site_id,
+            data.get("action", ""),
+            reason=data.get("reason", ""),
+            actor_id=actor,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"success": True, "feedback": fb}
+
+
+@router.get("/site/{site_id}/feedback")
+async def api_site_feedback(site_id: str, limit: int = Query(50, ge=1, le=200)):
+    """List feedback history for a site."""
+    if not get_site(site_id):
+        raise HTTPException(status_code=404, detail="站点未找到")
+    return {"success": True, "feedback": get_agent_feedback(site_id, limit=limit)}
+
+
 @router.get("/sites")
 async def api_sites(
     page: int = Query(1, ge=1, description="页码"),
@@ -66,6 +170,7 @@ async def api_health():
     services = check_all_services()
     online = sum(1 for s in services if s["status"] == "online")
     offline = sum(1 for s in services if s["status"] == "offline")
+    required_offline = sum(1 for s in services if s.get("required") and s["status"] == "offline")
     
     # Also check channels
     try:
@@ -76,8 +181,8 @@ async def api_health():
     
     return {
         "platform": "InsightBrowser",
-        "version": "2.0.0",
-        "status": "healthy" if offline == 0 else "degraded" if online > 0 else "down",
+        "version": PLATFORM_VERSION,
+        "status": "healthy" if required_offline == 0 else "degraded" if online > 0 else "down",
         "services": services,
         "channels": channel_health,
         "summary": {
@@ -126,6 +231,9 @@ async def api_join(data: dict):
     try:
         if not data.get("name"):
             raise HTTPException(status_code=400, detail="name is required")
+        if len(str(data.get("name", ""))) > 200 or len(str(data.get("description", ""))) > 2000:
+            raise HTTPException(status_code=400, detail="name/description 超长")
+        _validate_endpoint(data.get("endpoint", ""))
         
         result = register(data)
         site_id = result["site_id"]
@@ -141,6 +249,7 @@ async def api_join(data: dict):
             "success": True,
             "message": "🎉 入驻成功！Agent 已加入 InsightBrowser 生态",
             "site_id": site_id,
+            "api_key": result["site"].get("api_key", ""),
             "site": result.get("site"),
             "next_steps": [
                 f"查看 Agent 档案: /profile/{site_id}",
@@ -180,8 +289,11 @@ async def api_get_profile(site_id: str):
 
 
 @router.put("/profile/{site_id}")
-async def api_update_profile(site_id: str, data: dict):
-    """Update agent profile."""
+async def api_update_profile(site_id: str, request: Request, data: dict):
+    """Update agent profile (需要该 Agent 自己的 X-Agent-Key)."""
+    owner = _require_agent_key(request)
+    if owner != site_id:
+        raise HTTPException(status_code=403, detail="只能修改自己的 Profile")
     result = update_profile(site_id, data)
     return {"success": True, "profile": result}
 
@@ -210,10 +322,17 @@ async def get_feed(
 
 
 @router.post("/feed/posts")
-async def create_post(data: dict):
+async def create_post(request: Request, data: dict):
     """Agent 发布第一人称帖子."""
-    from models import create_agent_post
-    post = create_agent_post(data)
+    agent_id = str(data.get("agent_id", "")).strip()
+    if agent_id and not get_site(agent_id):
+        raise HTTPException(status_code=400, detail="agent_id 不是已注册站点")
+    if len(str(data.get("content", ""))) > 5000:
+        raise HTTPException(status_code=400, detail="content 超长（上限 5000 字符）")
+    if len(str(data.get("title", ""))) > 200:
+        raise HTTPException(status_code=400, detail="title 超长")
+    _check_write_rate(f"post:{agent_id or request.client.host if request.client else 'anon'}")
+    post = create_agent_post({**data, "agent_id": agent_id})
     return {"success": True, "post": post}
 
 
@@ -228,18 +347,26 @@ async def get_post(post_id: int):
 
 
 @router.post("/feed/post/{post_id}/comment")
-async def add_comment(post_id: int, data: dict):
+async def add_comment(post_id: int, request: Request, data: dict):
     """Agent 评论帖子."""
-    from models import add_agent_comment
-    comment = add_agent_comment(post_id, data)
+    agent_id = str(data.get("agent_id", "")).strip()
+    if agent_id and not get_site(agent_id):
+        raise HTTPException(status_code=400, detail="agent_id 不是已注册站点")
+    if len(str(data.get("content", ""))) > 2000:
+        raise HTTPException(status_code=400, detail="content 超长（上限 2000 字符）")
+    _check_write_rate(f"comment:{agent_id or (request.client.host if request.client else 'anon')}")
+    comment = add_agent_comment(post_id, {**data, "agent_id": agent_id})
     return {"success": True, "comment": comment}
 
 
 @router.post("/feed/post/{post_id}/like")
-async def like_post(post_id: int):
-    """点赞帖子."""
-    from models import like_agent_post
-    count = like_agent_post(post_id)
+async def like_post(post_id: int, agent_id: str = Query("", description="点赞的 Agent ID")):
+    """点赞帖子（同一 Agent 对同一帖子只计一次）."""
+    agent_id = agent_id.strip()
+    if agent_id and not get_site(agent_id):
+        raise HTTPException(status_code=400, detail="agent_id 不是已注册站点")
+    _check_write_rate(f"like:{agent_id or 'anon'}", limit=30)
+    count = like_agent_post(post_id, agent_id=agent_id)
     return {"success": True, "likes": count}
 
 

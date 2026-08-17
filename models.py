@@ -7,6 +7,8 @@ import hashlib
 import secrets
 import urllib.error
 import urllib.request
+import ipaddress
+import socket as _socket
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 from config import DATABASE_URL
@@ -147,6 +149,14 @@ def init_db():
             FOREIGN KEY (site_id) REFERENCES sites(site_id) ON DELETE CASCADE
         );
 
+        CREATE TABLE IF NOT EXISTS agent_post_likes (
+            post_id INTEGER NOT NULL,
+            agent_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (post_id, agent_id),
+            FOREIGN KEY (post_id) REFERENCES agent_posts(post_id) ON DELETE CASCADE
+        );
+
         CREATE INDEX IF NOT EXISTS idx_sites_type ON sites(type);
         CREATE INDEX IF NOT EXISTS idx_sites_name ON sites(name);
         CREATE INDEX IF NOT EXISTS idx_capabilities_name ON capabilities(name);
@@ -170,6 +180,76 @@ def generate_api_key() -> str:
 
 def hash_api_key(api_key: str) -> str:
     return hashlib.sha256(api_key.encode("utf-8")).hexdigest()
+
+
+# ─── SSRF 防护 ────────────────────────────────────────────────────────
+
+def _endpoint_ip_is_allowed(ip: str) -> bool:
+    """Allow global addresses, and loopback unless strict mode is on.
+
+    Blocking rationale:
+      - private ranges (10/8, 172.16/12, 192.168/16) -> internal network probing
+      - link-local 169.254/16 -> cloud metadata (169.254.169.254)
+      - CGNAT 100.64/10, unspecified 0.0.0.0/::, ULA fc00::/7, link-local fe80::/10
+    Loopback is allowed by default because single-node deployments and the
+    bundled smoke test register agents on 127.0.0.1. Set
+    INSIGHTBROWSER_STRICT_SSRF=1 for public deployments to block it too.
+    """
+    try:
+        addr = ipaddress.ip_address(ip.split("%")[0])
+    except ValueError:
+        return False
+    if addr.is_loopback:
+        return os.getenv("INSIGHTBROWSER_STRICT_SSRF", "0") != "1"
+    if addr.is_private or addr.is_link_local or addr.is_unspecified \
+            or addr.is_multicast or addr.is_reserved or addr.is_global is False:
+        return False
+    return True
+
+
+def is_safe_target_url(endpoint: str) -> tuple:
+    """Validate an agent endpoint URL against SSRF-prone targets.
+
+    Returns (ok: bool, reason: str).
+    """
+    from urllib.parse import urlparse
+    if not endpoint or not endpoint.startswith(("http://", "https://")):
+        return False, "endpoint must be an http(s) URL"
+    host = urlparse(endpoint).hostname
+    if not host:
+        return False, "endpoint has no hostname"
+    if host in ("localhost", "localhost.localdomain"):
+        host_ip = "127.0.0.1"
+    else:
+        try:
+            infos = _socket.getaddrinfo(host, None, type=_socket.SOCK_STREAM)
+        except OSError:
+            return False, f"cannot resolve endpoint host: {host}"
+        if not infos:
+            return False, f"endpoint host did not resolve: {host}"
+        host_ip = infos[0][4][0]
+    if not _endpoint_ip_is_allowed(host_ip):
+        return False, f"endpoint resolves to a blocked address: {host_ip}"
+    return True, ""
+
+
+def find_site_by_key(api_key: str) -> Optional[str]:
+    """Return the site_id that owns the given API key, or None."""
+    if not api_key:
+        return None
+    conn = get_db()
+    row = conn.execute(
+        "SELECT site_id FROM agent_keys WHERE api_key_hash = ?",
+        (hash_api_key(api_key),),
+    ).fetchone()
+    if row:
+        conn.execute(
+            "UPDATE agent_keys SET last_used_at = ? WHERE site_id = ?",
+            (datetime.now(timezone.utc).isoformat(), row["site_id"]),
+        )
+        conn.commit()
+    conn.close()
+    return row["site_id"] if row else None
 
 
 def register_site(data: dict) -> dict:
@@ -502,11 +582,10 @@ def init_or_get_profile(site_id: str) -> dict:
     cursor.execute("SELECT name FROM capabilities WHERE site_id = ?", (site_id,))
     caps = cursor.fetchall()
     for cap in caps:
-        score = random.choice(["A", "B", "S", "SS"])
         cursor.execute("""
             INSERT INTO capability_ratings (site_id, capability_name, score, description, updated_at)
             VALUES (?, ?, ?, '自动评估', ?)
-        """, (site_id, cap["name"], score, now))
+        """, (site_id, cap["name"], "B", now))
     conn.commit()
     
     profile = {
@@ -629,14 +708,15 @@ def check_agent_endpoint_health(site_id: str, timeout: float = 3.0) -> dict:
         return {"success": False, "status": "not_found", "error": "site not found"}
     endpoint = (site.get("endpoint") or "").rstrip("/")
     now = datetime.now(timezone.utc).isoformat()
-    if not endpoint or not endpoint.startswith(("http://", "https://")):
+    safe, reason = is_safe_target_url(endpoint)
+    if not safe:
         health = {
             "success": True,
             "site_id": site_id,
-            "status": "unknown",
+            "status": "blocked",
             "latency_ms": None,
             "checked_at": now,
-            "error": "endpoint is empty or not an HTTP URL",
+            "error": f"endpoint blocked: {reason}",
         }
         save_agent_health(site_id, health)
         return health
@@ -702,11 +782,12 @@ def call_agent(site_id: str, payload: dict, caller_id: str = "") -> dict:
     endpoint = (site.get("endpoint") or "").rstrip("/")
     action = payload.get("action", "")
     started_at = datetime.now(timezone.utc)
-    if not endpoint or not endpoint.startswith(("http://", "https://")):
+    safe, reason = is_safe_target_url(endpoint)
+    if not safe:
         result = {
             "success": False,
-            "status": "unavailable",
-            "error": "endpoint is empty or not an HTTP URL",
+            "status": "blocked",
+            "error": f"endpoint blocked: {reason}",
         }
         record_call_log(caller_id, site_id, action, payload, result, 0, result["error"])
         return result
@@ -810,6 +891,8 @@ def get_agent_call_logs(site_id: str, limit: int = 50) -> list[dict]:
 def add_agent_feedback(site_id: str, action: str, reason: str = "", actor_id: str = "") -> Optional[dict]:
     if not get_site(site_id):
         return None
+    if actor_id and not get_site(actor_id):
+        raise ValueError("actor must be a registered agent")
     normalized = action.lower()
     delta_map = {"stamp": 0.5, "revoke": -0.8}
     if normalized not in delta_map:
@@ -817,6 +900,15 @@ def add_agent_feedback(site_id: str, action: str, reason: str = "", actor_id: st
     delta = delta_map[normalized]
     now = datetime.now(timezone.utc).isoformat()
     conn = get_db()
+    hour_ago = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    recent = conn.execute(
+        "SELECT COUNT(*) FROM agent_feedback "
+        "WHERE actor_id = ? AND site_id = ? AND created_at > ?",
+        (actor_id or "", site_id, hour_ago),
+    ).fetchone()[0]
+    if recent >= 5:
+        conn.close()
+        raise ValueError("rate limit: 同一 Agent 每小时最多提交 5 次盖章/撤回")
     cursor = conn.execute("""
         INSERT INTO agent_feedback (site_id, actor_id, action, reason, delta, created_at)
         VALUES (?, ?, ?, ?, ?, ?)
@@ -1067,11 +1159,22 @@ def add_agent_comment(post_id: int, data: dict) -> dict:
     }
 
 
-def like_agent_post(post_id: int) -> int:
-    """点赞帖子."""
+def like_agent_post(post_id: int, agent_id: str = "anonymous") -> int:
+    """点赞帖子（同一 Agent 对同一帖子只计一次）."""
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("UPDATE agent_posts SET likes = likes + 1 WHERE post_id = ?", (post_id,))
+    now = datetime.now(timezone.utc).isoformat()
+    cursor.execute(
+        "INSERT OR IGNORE INTO agent_post_likes (post_id, agent_id, created_at) "
+        "VALUES (?, ?, ?)",
+        (post_id, agent_id or "anonymous", now),
+    )
+    cursor.execute(
+        "UPDATE agent_posts SET likes = "
+        "(SELECT COUNT(*) FROM agent_post_likes WHERE post_id = ?) "
+        "WHERE post_id = ?",
+        (post_id, post_id),
+    )
     conn.commit()
     cursor.execute("SELECT likes FROM agent_posts WHERE post_id = ?", (post_id,))
     count = cursor.fetchone()[0]
